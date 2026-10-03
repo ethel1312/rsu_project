@@ -1,0 +1,120 @@
+/* ===== Fondo ===== */
+.app-sidebar {
+    background-color: #12206b !important;
+}
+
+/* ===== Logo (expandido) ===== */
+.app-sidebar .sidebar-brand {
+    position: relative;
+    height: 110px !important;      /* alto de la zona del logo: ajústalo */
+    padding: 0 !important;
+    margin-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    overflow: visible;
+}
+.app-sidebar .sidebar-brand .brand-link {
+    position: relative;
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+.app-sidebar .sidebar-brand .logo-xl {
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    box-sizing: border-box !important;
+    width: auto !important;
+    height: auto !important;
+    max-width: 200px !important;
+    max-height: 84px !important;   /* debe ser menor que el alto de arriba */
+    margin: 0 !important;
+    padding: 6px !important;
+    background: #fff;
+    border-radius: 12px;
+}
+
+/* ===== Menú ===== */
+.app-sidebar .sidebar-wrapper {
+    padding: 0 14px;
+}
+.app-sidebar .sidebar-menu {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+.app-sidebar .sidebar-menu > .nav-item > .nav-link {
+    margin: 3px 0 !important;
+    width: 100% !important;
+    border-radius: 10px;
+    color: #cfd8ff;
+}
+.app-sidebar .sidebar-menu > .nav-item > .nav-link:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: #fff;
+}
+.app-sidebar .sidebar-menu .nav-link.active {
+    background-color: #5bb8f5 !important;
+    color: #fff !important;
+    box-shadow: 0 4px 10px rgba(91, 184, 245, 0.35);
+}
+/* El padre ("Gestión de Vehículos") más sutil que el hijo activo */
+.app-sidebar .nav-item.menu-open > .nav-link.active {
+    background-color: rgba(255, 255, 255, 0.12) !important;
+    box-shadow: none;
+}
+.app-sidebar .nav-treeview > .nav-item > .nav-link {
+    margin: 2px 0 !important;
+    width: 100% !important;
+}
+
+/* ===== Menú colapsado ===== */
+.sidebar-collapse .app-sidebar:not(:hover) .sidebar-brand {
+    height: 80px !important;
+    margin-bottom: 10px;
+}
+.sidebar-collapse .app-sidebar:not(:hover) .sidebar-brand .logo-xs {
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    box-sizing: border-box !important;
+    width: 46px !important;
+    height: 46px !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 4px !important;
+    background: #fff !important;
+    border-radius: 10px;
+    object-fit: contain;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+.sidebar-collapse .app-sidebar:not(:hover) .sidebar-wrapper {
+    padding: 0 10px;
+}
+
+/* ===== Barra superior ===== */
+.app-header {
+    background-color: #fff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+/* ===== Sin animación (evita el desfase al colapsar) ===== */
+.app-sidebar,
+.app-sidebar * {
+    transition: none !important;
+}
+
+/* FORMATO FECHA */
+
+.rsu-date {
+    text-align: center;
+    line-height: 1.3;
+    color: var(--rsu-ink);
+}
+.rsu-date small {
+    display: block;
+    color: var(--rsu-gray);
+}

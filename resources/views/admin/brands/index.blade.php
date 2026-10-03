@@ -2,27 +2,22 @@
 
 @section('title', 'Proyecto RSU')
 
+@section('content_header')
+    <div class="rsu-title-bar">
+        <h1 class="rsu-title">
+            <span class="rsu-title-ico"><i class="bi bi-c-circle"></i></span>
+            Lista de Marcas
+        </h1>
+
+        <button type="button" id="btnNuevo" class="btn rsu-btn-new">
+            <i class="bi bi-plus-circle"></i> Nueva Marca
+        </button>
+    </div>
+@stop
+
 @section('content')
 
     <div class="card">
-        <div class="card-header d-flex">
-
-            <div class="w-50">
-                <h4>Marcas</h4>
-            </div>
-
-            <div class="w-50 d-flex justify-content-end">
-
-                <button type="button" id="btnNuevo" class="btn btn-success">
-                    <i class="bi bi-cloud-plus"></i>
-                    Nueva Marca
-                </button>
-
-            </div>
-
-        </div>
-
-
         <div class="card-body">
 
             <table class="table table-striped" id="DataTable" style="width:100%">
@@ -78,15 +73,6 @@
 
                 </div>
 
-
-                <div class="modal-footer">
-
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                        Cerrar
-                    </button>
-
-                </div>
-
             </div>
 
         </div>
@@ -100,6 +86,46 @@
     <style>
         #DataTable img {
             object-fit: contain;
+        }
+
+        #formModal .brand-form-row {
+            --bs-gutter-x: 1rem;
+            --bs-gutter-y: .5rem;
+        }
+
+        #formModal .brand-image-picker {
+            display: block;
+            width: 100%;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: inherit;
+            cursor: pointer;
+            text-align: center;
+        }
+
+        #formModal .brand-image-preview {
+            display: block;
+            width: 100%;
+            height: 140px;
+            object-fit: contain;
+        }
+
+        #formModal .brand-image-hint {
+            display: block;
+            margin-top: .35rem;
+            font-size: .8125rem;
+            line-height: 1.35;
+        }
+
+        #formModal .brand-form-actions {
+            display: flex;
+            gap: .5rem;
+            margin-top: .25rem;
+        }
+
+        #formModal .brand-form-actions .btn + .btn {
+            margin-left: 0;
         }
     </style>
 

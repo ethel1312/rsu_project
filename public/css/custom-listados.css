@@ -1,0 +1,137 @@
+/* ==========================================================
+   LISTADOS (Colores, Marcas, Modelos, Tipos, Vehículos)
+   Pega este bloque al final de public/css/custom.css
+   ========================================================== */
+
+:root {
+    --rsu-navy: #12206b;
+    --rsu-sky: #5bb8f5;
+    --rsu-sky-dark: #3fa3e8;
+    --rsu-soft: #eef3ff;
+    --rsu-zebra: #f4f8ff;
+    --rsu-gray: #6b7388;
+    --rsu-ink: #3d4455;
+}
+
+/* ---------- Título fuera de la tabla ---------- */
+.rsu-title-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 0 8px;
+}
+.rsu-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0;
+    font-size: 1.6rem;
+    font-weight: 600;
+    color: var(--rsu-navy);
+}
+.rsu-title-ico {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    background: var(--rsu-soft);
+    color: var(--rsu-navy);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+}
+
+/* ---------- Botón "Nuevo" celeste ---------- */
+.rsu-btn-new {
+    background-color: var(--rsu-sky);
+    border: 1px solid var(--rsu-sky);
+    color: #fff;
+    font-weight: 600;
+    border-radius: 8px;
+    padding: .5rem 1.1rem;
+}
+.rsu-btn-new:hover,
+.rsu-btn-new:focus {
+    background-color: var(--rsu-navy);
+    border-color: var(--rsu-navy);
+    color: #fff;
+}
+
+/* ---------- Tarjeta de la tabla ---------- */
+.card:has(table.dataTable) {
+    border: 1px solid #dfe6f5;
+    border-radius: 14px;
+}
+
+/* ---------- Tabla ---------- */
+table.dataTable {
+    --bs-table-striped-bg: var(--rsu-zebra);
+    --bs-table-hover-bg: var(--rsu-soft);
+    color: var(--rsu-ink);
+}
+table.dataTable thead th {
+    color: var(--rsu-navy);
+    font-weight: 600;
+    border-bottom: 2px solid #dfe6f5;
+}
+table.dataTable tbody td {
+    border-color: #edf1fa;
+    vertical-align: middle;
+}
+
+/* ---------- Botones Editar / Eliminar ---------- */
+.btnEditar,
+.btnEditar.btn-primary {
+    background: var(--rsu-soft);
+    border-color: var(--rsu-soft);
+    color: var(--rsu-navy);
+}
+.btnEditar:hover {
+    background: var(--rsu-sky);
+    border-color: var(--rsu-sky);
+    color: #fff;
+}
+.frmEliminar .btn-danger {
+    background: #fbe6ea;
+    border-color: #fbe6ea;
+    color: #a8445a;
+}
+.frmEliminar .btn-danger:hover {
+    background: #a8445a;
+    border-color: #a8445a;
+    color: #fff;
+}
+
+/* ---------- Paginación (abajo a la derecha) ---------- */
+.pagination .page-link,
+.dt-paging .page-link {
+    color: var(--rsu-navy);
+    border-color: #dfe6f5;
+    background: #fff;
+}
+.pagination .page-link:hover,
+.dt-paging .page-link:hover {
+    background: var(--rsu-soft);
+    color: var(--rsu-navy);
+}
+.pagination .page-item.active .page-link,
+.dt-paging .page-item.active .page-link {
+    background-color: var(--rsu-sky);
+    border-color: var(--rsu-sky);
+    color: #fff;
+}
+.pagination .page-item.disabled .page-link,
+.dt-paging .page-item.disabled .page-link {
+    color: #aab1c5;
+    background: #fff;
+}
+
+/* ---------- Buscador y selector de registros ---------- */
+.dt-search input:focus,
+.dt-length select:focus,
+.dataTables_filter input:focus,
+.dataTables_length select:focus {
+    border-color: var(--rsu-sky);
+    box-shadow: 0 0 0 .2rem rgba(91, 184, 245, .25);
+}

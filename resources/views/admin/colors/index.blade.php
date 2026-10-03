@@ -2,23 +2,22 @@
 
 @section('title', 'Proyecto RSU')
 
+@section('content_header')
+    <div class="rsu-title-bar">
+        <h1 class="rsu-title">
+            <span class="rsu-title-ico"><i class="bi bi-palette"></i></span>
+            Lista de Colores
+        </h1>
+
+        <button type="button" id="btnNuevo" class="btn rsu-btn-new">
+            <i class="bi bi-plus-circle"></i> Nuevo Color
+        </button>
+    </div>
+@stop
+
 @section('content')
 
-    <div class="card mt-3">
-        <div class="card-header d-flex align-items-center">
-
-            <div class="w-50">
-                <h4 class="mb-0">Colores</h4>
-            </div>
-
-            <div class="w-50 d-flex justify-content-end">
-                <button type="button" id="btnNuevo" class="btn btn-success">
-                    <i class="bi bi-cloud-plus"></i> Nuevo Color
-                </button>
-            </div>
-
-        </div>
-
+    <div class="card">
         <div class="card-body">
             <table class="table table-striped" id="DataTable" style="width:100%">
                 <thead>
@@ -125,7 +124,12 @@
                 success: function(response) {
                     $('#formModal').modal('hide');
                     table.ajax.reload(null, false);
-                    Swal.fire("Proceso exitoso", response.message, "success");
+                    Swal.fire({
+                        title: "Proceso exitoso",
+                        text: response.message,
+                        icon: "success",
+                        confirmButtonColor: "#12206b"
+                    });
                 },
                 error: function(xhr) {
                     form.find('button[type="submit"]').prop('disabled', false).html('<i class="bi bi-floppy-fill"></i> Reintentar');
@@ -134,7 +138,12 @@
                         errorMsg = '';
                         $.each(xhr.responseJSON.errors, (k, v) => errorMsg += v[0] + '<br>');
                     }
-                    Swal.fire("Error", errorMsg, "error");
+                    Swal.fire({
+                        title: "Error",
+                        html: errorMsg,
+                        icon: "error",
+                        confirmButtonColor: "#12206b"
+                    });
                 }
             });
         });
@@ -150,8 +159,8 @@
                 text: "¡Esta acción no se puede revertir!",
                 icon: "warning",
                 showCancelButton: true,
-                confirmButtonColor: "#3085d6",
-                cancelButtonColor: "#d33",
+                confirmButtonColor: "#12206b",
+                cancelButtonColor: "#6b7388",
                 confirmButtonText: "Sí, eliminar!",
                 cancelButtonText: "Cancelar"
             }).then((result) => {
@@ -163,10 +172,20 @@
                         headers: { 'X-CSRF-TOKEN': csrfToken },
                         success: function(response) {
                             table.ajax.reload(null, false);
-                            Swal.fire("¡Eliminado!", response.message, "success");
+                            Swal.fire({
+                                title: "¡Eliminado!",
+                                text: response.message,
+                                icon: "success",
+                                confirmButtonColor: "#12206b"
+                            });
                         },
                         error: function(xhr) {
-                            Swal.fire("Error", "No se pudo eliminar.", "error");
+                            Swal.fire({
+                                title: "No se pudo eliminar",
+                                text: xhr.responseJSON?.error || "Ocurrió un error al eliminar.",
+                                icon: "error",
+                                confirmButtonColor: "#12206b"
+                            });
                         }
                     });
                 }

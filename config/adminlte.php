@@ -77,12 +77,12 @@ return [
     |
     */
 
-    'logo' => '<b>RSU</b>Project    ',
-    'logo_img' => 'vendor/adminlte/dist/assets/img/AdminLTELogo.png',
-    'logo_img_class' => 'brand-image opacity-75 shadow',
-    'logo_img_xl' => null,
-    'logo_img_xl_class' => 'brand-image-xs opacity-75',
-    'logo_img_alt' => 'Admin Logo',
+    'logo' => '',
+    'logo_img' => 'img/escudo_muni.png',
+    'logo_img_class' => 'brand-image',
+    'logo_img_xl' => 'img/logo_muni.png',
+    'logo_img_xl_class' => 'brand-image-xl',
+    'logo_img_alt' => 'Municipalidad José Leonardo Ortiz',
 
     /*
     |--------------------------------------------------------------------------
@@ -190,7 +190,7 @@ return [
     */
 
     'use_route_url' => false,
-    'dashboard_url' => 'home',
+    'dashboard_url' => 'admin',
     'logout_url' => 'logout',
 
     // The HTTP method spoofed on the logout form. Set it to 'GET' when your
@@ -685,7 +685,9 @@ return [
     // are emitted with a matching specificity. For example:
     // 'css_variables_sidebar' => ['--lte-sidebar-bg' => '#1f2d3d'],
 
-    'css_variables_sidebar' => [],
+    'css_variables_sidebar' => [
+        '--lte-sidebar-bg' => '#12206b',
+    ],
 
     /*
     |--------------------------------------------------------------------------
@@ -775,13 +777,13 @@ return [
     'menu' => [
         // Navbar items:
         [
-            'type' => 'navbar-search',
-            'text' => 'Buscar',
-            'topnav_right' => true,
+            // 'type' => 'navbar-search',
+            // 'text' => 'Buscar',
+            // 'topnav_right' => true,
         ],
         [
-            'type' => 'darkmode-widget',
-            'topnav_right' => true,
+            // 'type' => 'darkmode-widget',
+            // 'topnav_right' => true,
         ],
         [
             'type' => 'fullscreen-widget',
@@ -789,88 +791,62 @@ return [
         ],
 
         // Sidebar items:
+
+        // [
+        //     'type' => 'sidebar-menu-search',
+        //     'text' => 'Buscar',
+        // ],
+
+
         [
-            'type' => 'sidebar-menu-search',
-            'text' => 'Buscar',
-        ],
-        ['header' => 'GESTIÓN DE VEHÍCULOS'],
-        [
-            'text' => 'Marcas',
-            'route' => 'admin.brands.index',
-            'icon' => 'bi bi-c-circle',
-        ],
-        [
-            'text' => 'Modelos',
-            'route' => 'admin.models.index',
-            'icon' => 'bi bi-truck-front',
-        ],
-        [
-            'text' => 'Tipos',
-            'route' => 'admin.vehicle_types.index',
-            'icon' => 'bi bi-truck-flatbed',
-        ],
-        [
-            'text' => 'Colores',
-            'route' => 'admin.colors.index',
-            'icon' => 'bi bi-palette',
-        ],
-        [
-            'text' => 'Vehículos    ',
-            'route' => 'admin.vehicles.index',
+            'text' => 'Gestión de Vehículos',
             'icon' => 'bi bi-truck',
-        ],
-        [
-            'text' => 'multilevel',
-            'icon' => 'bi bi-share',
             'submenu' => [
                 [
-                    'text' => 'level_one',
-                    'url' => '#',
+                    'text' => 'Colores',
+                    'route' => 'admin.colors.index',
+                    'icon' => 'bi bi-palette',
                 ],
                 [
-                    'text' => 'level_one',
-                    'url' => '#',
-                    'submenu' => [
-                        [
-                            'text' => 'level_two',
-                            'url' => '#',
-                        ],
-                        [
-                            'text' => 'level_two',
-                            'url' => '#',
-                            'submenu' => [
-                                [
-                                    'text' => 'level_three',
-                                    'url' => '#',
-                                ],
-                                [
-                                    'text' => 'level_three',
-                                    'url' => '#',
-                                ],
-                            ],
-                        ],
-                    ],
+                    'text' => 'Marcas',
+                    'route' => 'admin.brands.index',
+                    'icon' => 'bi bi-c-circle',
                 ],
                 [
-                    'text' => 'level_one',
-                    'url' => '#',
+                    'text' => 'Modelos',
+                    'route' => 'admin.models.index',
+                    'icon' => 'bi bi-truck-front',
+                ],
+                [
+                    'text' => 'Tipo de Vehículos',
+                    'route' => 'admin.vehicle_types.index',
+                    'icon' => 'bi bi-truck-flatbed',
+                ],
+                [
+                    'text' => 'Vehículos',
+                    'route' => 'admin.vehicles.index',
+                    'icon' => 'bi bi-truck',
                 ],
             ],
         ],
-        ['header' => 'labels'],
         [
-            'text' => 'important',
-            'icon_color' => 'danger',
+            'text' => 'Gestión de Personal',
+            'icon' => 'bi bi-people',
             'url' => '#',
         ],
         [
-            'text' => 'warning',
-            'icon_color' => 'warning',
+            'text' => 'Programación',
+            'icon' => 'bi bi-calendar3',
             'url' => '#',
         ],
         [
-            'text' => 'information',
-            'icon_color' => 'info',
+            'text' => 'Gestión de Cambios',
+            'icon' => 'bi bi-arrow-left-right',
+            'url' => '#',
+        ],
+        [
+            'text' => 'Gestión de Usuarios',
+            'icon' => 'bi bi-person-gear',
             'url' => '#',
         ],
     ],
@@ -1121,6 +1097,26 @@ return [
                     'type' => 'js',
                     'asset' => false,
                     'location' => '//cdnjs.cloudflare.com/ajax/libs/pace/1.2.4/pace.min.js',
+                ],
+            ],
+        ],
+        'CustomCss' => [
+            'active' => true,
+            'files' => [
+                [
+                    'type' => 'css',
+                    'asset' => true,
+                    'location' => 'css/custom.css',
+                ],
+                [
+                    'type' => 'css',
+                    'asset' => true,
+                    'location' => 'css/custom-listados.css',
+                ],
+                [
+                    'type' => 'css',
+                    'asset' => true,
+                    'location' => 'css/custom-modales.css',
                 ],
             ],
         ],

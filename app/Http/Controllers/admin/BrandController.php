@@ -4,6 +4,7 @@ namespace App\Http\Controllers\admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Brand;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Yajra\DataTables\Facades\DataTables;
@@ -24,6 +25,13 @@ class BrandController extends Controller
                     return '<img src="' . ($brand->logo == '' ? asset('/storage/images/no_logo.png') : asset($brand->logo)) . '"
                                     style ="width:60px; height:50">';
                 })
+                // Fecha arriba (dd/mm/YYYY) y hora debajo (HH:mm)
+                ->editColumn('created_at', function ($color) {
+                    return $this->formatDate($color->created_at);
+                })
+                ->editColumn('updated_at', function ($color) {
+                    return $this->formatDate($color->updated_at);
+                })
                 ->addColumn("edit", function ($brand) {
                     return '<button class="btn btn-sm btn-primary btnEditar" data-id=' . $brand->id . '><i
                                         class="bi bi-pencil-square"></i></button>';
@@ -35,14 +43,23 @@ class BrandController extends Controller
                                             class="bi bi-trash3-fill"></i></button>
                                 </form>';
                 })
-                ->rawColumns(['logo', 'edit', 'delete'])
+                ->rawColumns(['logo', 'created_at', 'updated_at', 'edit', 'delete'])
                 ->make(true);
         } else {
             return view('admin.brands.index', compact('brands'));
         }
     }
 
+    private function formatDate(\DateTimeInterface|string|null $value): string
+    {
+        if (!$value) {
+            return '';
+        }
 
+        $d = Carbon::parse($value)->setTimezone('America/Lima');
+
+        return '<div class="rsu-date">' . $d->format('d/m/Y') . '<small>' . $d->format('H:i') . '</small></div>';
+    }
 
     public function create()
     {

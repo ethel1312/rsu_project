@@ -1,0 +1,75 @@
+/* ==========================================================
+   MODALES DE FORMULARIO (Nuevo / Editar)
+   Pega este bloque al final de public/css/custom.css
+   ========================================================== */
+
+/* ---------- Cabecera y cuerpo ---------- */
+#formModal .modal-content {
+    border: 0;
+    border-radius: 14px;
+    overflow: hidden;
+}
+#formModal .modal-header {
+    border-bottom: 1px solid #e7ecf7;
+    padding: 1rem 1.25rem;
+}
+#formModal .modal-title {
+    color: var(--rsu-navy);
+    font-weight: 600;
+}
+#formModal label {
+    color: var(--rsu-ink);
+    font-weight: 600;
+    font-size: .92rem;
+}
+
+/* ---------- Campos: foco celeste ---------- */
+#formModal .form-control:focus,
+#formModal .form-select:focus {
+    border-color: var(--rsu-sky);
+    box-shadow: 0 0 0 .2rem rgba(91, 184, 245, .25);
+}
+
+/* ---------- Botón Guardar: celeste, pasa a marino ---------- */
+#formModal .btn-primary,
+#formModal button[type="submit"] {
+    background-color: var(--rsu-sky);
+    border: 1px solid var(--rsu-sky);
+    color: #fff;
+    font-weight: 600;
+    border-radius: 8px;
+    padding: .5rem 1.2rem;
+}
+#formModal .btn-primary:hover,
+#formModal button[type="submit"]:hover {
+    background-color: var(--rsu-navy);
+    border-color: var(--rsu-navy);
+    color: #fff;
+}
+#formModal button[type="submit"]:disabled {
+    background-color: var(--rsu-sky);
+    border-color: var(--rsu-sky);
+    opacity: .7;
+}
+
+/* ---------- Botón Cancelar: gris suave, sin rojo ---------- */
+#formModal .btn-danger,
+#formModal [data-bs-dismiss="modal"].btn {
+    background-color: var(--rsu-soft);
+    border: 1px solid var(--rsu-soft);
+    color: var(--rsu-gray);
+    font-weight: 600;
+    border-radius: 8px;
+    padding: .5rem 1.2rem;
+}
+#formModal .btn-danger:hover,
+#formModal [data-bs-dismiss="modal"].btn:hover {
+    background-color: #dfe6f5;
+    border-color: #dfe6f5;
+    color: var(--rsu-navy);
+}
+
+/* ---------- Separación entre botones ---------- */
+#formModal .modal-body .btn + .btn {
+    margin-left: .5rem;
+}

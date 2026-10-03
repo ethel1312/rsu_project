@@ -2,27 +2,23 @@
 
 @section('title', 'Proyecto RSU')
 
+@section('content_header')
+    <div class="rsu-title-bar">
+        <h1 class="rsu-title">
+            <span class="rsu-title-ico"><i class="bi bi-truck-front"></i></span>
+            Lista de Modelos de Vehículos
+        </h1>
+
+        <button type="button" id="btnNuevo" class="btn rsu-btn-new">
+            <i class="bi bi-plus-circle"></i> Nuevo Modelo
+        </button>
+    </div>
+@stop
+
 @section('content')
 
     <div class="card">
-        <div class="card-header d-flex">
-
-            <div class="w-50">
-                <h4>Modelos</h4>
-            </div>
-
-            <div class="w-50 d-flex justify-content-end">
-
-                <button type="button" id="btnNuevo" class="btn btn-success">
-                    <i class="bi bi-cloud-plus"></i>
-                    Nueva Modelo
-                </button>
-
-            </div>
-
-        </div>
-
-
+        
         <div class="card-body">
 
             <table class="table table-striped" id="DataTable" style="width:100%">
@@ -76,15 +72,6 @@
                 <div class="modal-body">
 
                     {{-- Aquí se cargará el formulario mediante AJAX --}}
-
-                </div>
-
-
-                <div class="modal-footer">
-
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                        Cerrar
-                    </button>
 
                 </div>
 

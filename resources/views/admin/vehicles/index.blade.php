@@ -1,20 +1,23 @@
 @extends('adminlte::page')
 @section('title', 'Vehículos')
+@section('content_header')
+    <div class="rsu-title-bar">
+        <h1 class="rsu-title">
+            <span class="rsu-title-ico"><i class="bi bi-truck"></i></span>
+            Lista de Vehículos
+        </h1>
+
+        <button type="button" id="btnNuevo" class="btn rsu-btn-new">
+            <i class="bi bi-plus-circle"></i> Nuevo Vehículo
+        </button>
+    </div>
+@stop
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/dropzone/5.9.3/min/dropzone.min.css">
 @stop
 @section('content')
-    <div class="card mt-3">
-        <div class="card-header d-flex align-items-center">
-            <div class="w-50">
-                <h4 class="mb-0">Gestión de Vehículos</h4>
-            </div>
-            <div class="w-50 d-flex justify-content-end">
-                <button type="button" id="btnNuevo" class="btn btn-success">
-                    <i class="bi bi-plus-circle"></i> Nuevo Vehículo
-                </button>
-            </div>
-        </div>
+    <div class="card">
+        
         <div class="card-body">
             <table class="table table-striped" id="DataTable" style="width:100%">
                 <thead>
@@ -42,9 +45,9 @@
     <div class="modal fade" id="formModal" data-bs-backdrop="static" tabindex="-1">
         <div class="modal-dialog modal-xl"> <!-- modal-xl para que el grid se vea bien -->
             <div class="modal-content">
-                <div class="modal-header bg-primary text-white">
+                <div class="modal-header">
                     <h5 class="modal-title" id="formModalLabel">Nuevo Vehículo</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body"></div>
             </div>
@@ -86,7 +89,11 @@
                 success: function(response) {
                     $('#formModalLabel').html('Nuevo Vehículo');
                     $('#formModal .modal-body').html(response);
-                    $('#formModal').modal('show');
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById('formModal')).show();
+                },
+                error: function(xhr) {
+                    console.error('No se pudo cargar el formulario del vehículo:', xhr.responseText);
+                    Swal.fire('Error', 'No se pudo cargar el formulario del vehículo.', 'error');
                 }
             });
         });
@@ -100,7 +107,7 @@
                 success: function(response) {
                     $('#formModalLabel').html('Editar Vehículo');
                     $('#formModal .modal-body').html(response);
-                    $('#formModal').modal('show');
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById('formModal')).show();
                 }
             });
         });
@@ -120,7 +127,7 @@
                     btn.html(originalHtml).prop('disabled', false);
                     $('#formModalLabel').html('<i class="bi bi-images"></i> Galería del Vehículo');
                     $('#formModal .modal-body').html(response);
-                    $('#formModal').modal('show');
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById('formModal')).show();
                 },
                 error: function(xhr) {
                     btn.html(originalHtml).prop('disabled', false);

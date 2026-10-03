@@ -1,18 +1,23 @@
 @extends('adminlte::page')
-@section('title', 'Tipos de Vehículos')
+
+@section('title', 'Proyecto RSU')
+
+@section('content_header')
+    <div class="rsu-title-bar">
+        <h1 class="rsu-title">
+            <span class="rsu-title-ico"><i class="bi bi-truck-flatbed"></i></span>
+            Lista de Tipos de Vehículos
+        </h1>
+
+        <button type="button" id="btnNuevo" class="btn rsu-btn-new">
+            <i class="bi bi-plus-circle"></i> Nuevo Tipo
+        </button>
+    </div>
+@stop
 
 @section('content')
-    <div class="card mt-3">
-        <div class="card-header d-flex align-items-center">
-            <div class="w-50">
-                <h4 class="mb-0">Tipos de Vehículos</h4>
-            </div>
-            <div class="w-50 d-flex justify-content-end">
-                <button type="button" id="btnNuevo" class="btn btn-success">
-                    <i class="bi bi-cloud-plus"></i> Nuevo Tipo
-                </button>
-            </div>
-        </div>
+    <div class="card">
+        
         <div class="card-body">
             <table class="table table-striped" id="DataTable" style="width:100%">
                 <thead>
@@ -33,9 +38,9 @@
     <div class="modal fade" id="formModal" data-bs-backdrop="static" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
-                <div class="modal-header bg-primary text-white">
+                <div class="modal-header">
                     <h5 class="modal-title" id="formModalLabel">Nuevo Tipo de Vehículo</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body"></div>
             </div>

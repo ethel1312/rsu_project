@@ -4,6 +4,7 @@ namespace App\Http\Controllers\admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\VehicleType;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Yajra\DataTables\Facades\DataTables;
 
@@ -15,6 +16,13 @@ class VehicleTypeController extends Controller
             $types = VehicleType::select(['id', 'name', 'description', 'created_at', 'updated_at']);
 
             return DataTables::of($types)
+            // Fecha arriba (dd/mm/YYYY) y hora debajo (HH:mm)
+                ->editColumn('created_at', function ($color) {
+                    return $this->formatDate($color->created_at);
+                })
+                ->editColumn('updated_at', function ($color) {
+                    return $this->formatDate($color->updated_at);
+                })
                 ->addColumn('edit', function ($type) {
                     return '<button type="button" class="btn btn-sm btn-primary btnEditar" data-id="' . $type->id . '"><i class="bi bi-pencil-square"></i></button>';
                 })
@@ -23,10 +31,21 @@ class VehicleTypeController extends Controller
                            csrf_field() . method_field('DELETE') .
                            '<button type="submit" class="btn btn-sm btn-danger"><i class="bi bi-trash3-fill"></i></button></form>';
                 })
-                ->rawColumns(['edit', 'delete'])
+                ->rawColumns(['created_at', 'updated_at','edit', 'delete'])
                 ->make(true);
         }
         return view('admin.vehicle_types.index');
+    }
+
+    private function formatDate(\DateTimeInterface|string|null $value): string
+    {
+        if (!$value) {
+            return '';
+        }
+
+        $d = Carbon::parse($value)->setTimezone('America/Lima');
+
+        return '<div class="rsu-date">' . $d->format('d/m/Y') . '<small>' . $d->format('H:i') . '</small></div>';
     }
 
     public function create()

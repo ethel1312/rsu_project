@@ -5,6 +5,7 @@ namespace App\Http\Controllers\admin;
 use App\Http\Controllers\Controller;
 use App\Models\Brand;
 use App\Models\Brandmodel;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Yajra\DataTables\Facades\DataTables;
@@ -30,6 +31,12 @@ class BrandmdelController extends Controller
 
         if ($request->ajax()) {
             return DataTables::of($models)
+                ->editColumn('created_at', function ($color) {
+                    return $this->formatDate($color->created_at);
+                })
+                ->editColumn('updated_at', function ($color) {
+                    return $this->formatDate($color->updated_at);
+                })
                 ->addColumn("edit", function ($model) {
                     return '<button type="button" class="btn btn-sm btn-primary btnEditar" data-id="' . $model->id . '"><i class="bi bi-pencil-square"></i></button>';
                 })
@@ -40,14 +47,23 @@ class BrandmdelController extends Controller
                                 '<button type="submit" class="btn btn-sm btn-danger"><i class="bi bi-trash3-fill"></i></button>
                             </form>';
                 })
-                ->rawColumns(['edit', 'delete'])
+                ->rawColumns(['edit', 'created_at', 'updated_at', 'delete'])
                 ->make(true);
         } else {
             return view('admin.models.index'); // No es necesario enviar compact('models') si usas AJAX
         }
     }
 
+    private function formatDate(\DateTimeInterface|string|null $value): string
+    {
+        if (!$value) {
+            return '';
+        }
 
+        $d = Carbon::parse($value)->setTimezone('America/Lima');
+
+        return '<div class="rsu-date">' . $d->format('d/m/Y') . '<small>' . $d->format('H:i') . '</small></div>';
+    }
 
 
     /**
