@@ -17,18 +17,15 @@
         <div class="row" id="galleryContainer">
             @forelse($vehicle->images as $image)
                 <div class="col-md-3 mb-3 text-center" id="imgBox-{{ $image->id }}">
-                    <div class="card h-100 {{ $image->is_profile ? 'border-primary shadow' : '' }}">
+                    <div class="card h-100 image-card {{ $image->is_profile ? 'border-primary shadow' : '' }}">
+                        <button type="button" class="btn btn-sm btn-danger btnDeleteImage image-delete-btn" data-id="{{ $image->id }}" aria-label="Eliminar imagen" title="Eliminar imagen">
+                            <i class="bi bi-trash"></i>
+                        </button>
                         <img src="{{ asset('storage/' . $image->image_path) }}" class="card-img-top" style="height: 130px; object-fit: cover;" alt="Vehículo">
-                        <div class="card-body p-2 d-flex justify-content-between align-items-center bg-light">
-                            
-                            <button class="btn btn-sm w-100 me-1 btnSetProfile {{ $image->is_profile ? 'btn-primary' : 'btn-outline-secondary' }}" data-id="{{ $image->id }}">
+                        <div class="card-body p-2 bg-light">
+                            <button type="button" class="btn btn-sm w-100 btnSetProfile {{ $image->is_profile ? 'btn-primary' : 'btn-outline-secondary' }}" data-id="{{ $image->id }}">
                                 <i class="bi bi-star-fill"></i> {{ $image->is_profile ? 'Perfil' : 'Fijar' }}
                             </button>
-                            
-                            <button class="btn btn-sm btn-danger btnDeleteImage" data-id="{{ $image->id }}">
-                                <i class="bi bi-trash"></i>
-                            </button>
-                            
                         </div>
                     </div>
                 </div>
@@ -40,6 +37,35 @@
         </div>
     </div>
 </div>
+
+<style>
+    #galleryContainer .image-card {
+        position: relative;
+    }
+
+    #galleryContainer .image-delete-btn {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        z-index: 10;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity .2s ease;
+    }
+
+    #galleryContainer .image-card:hover .image-delete-btn,
+    #galleryContainer .image-card:focus-within .image-delete-btn {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    @media (hover: none), (pointer: coarse) {
+        #galleryContainer .image-delete-btn {
+            opacity: 1;
+            pointer-events: auto;
+        }
+    }
+</style>
 
 <script>
     // Evitar que Dropzone choque si se abre el modal varias veces
