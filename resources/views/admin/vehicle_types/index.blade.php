@@ -134,8 +134,22 @@
                         data: form.serialize(),
                         success: function(response) {
                             table.ajax.reload(null, false);
-                            Swal.fire("Eliminado", response.message, "success");
+                            Swal.fire({
+                                title: "¡Eliminado!",
+                                text: response.message,
+                                icon: "success",
+                                confirmButtonColor: "#12206b"
+                            });
+                        },
+                        error: function(xhr) {
+                            Swal.fire({
+                                title: "No se pudo eliminar",
+                                text: xhr.responseJSON?.error || "Ocurrió un error al eliminar.",
+                                icon: "error",
+                                confirmButtonColor: "#12206b"
+                            });
                         }
+                        
                     });
                 }
             });

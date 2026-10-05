@@ -113,9 +113,12 @@ class ColorController extends Controller
     {
         try {
             $color = Color::find($id);
-            $request->validate(['name' => 'required|unique:colors,name,' . $id, 'code' => 'required']);
+            $this->normalizeCode($request);
+            $request->validate(['name' => 'required|unique:colors,name,' . $id, 'code' => 'required|regex:/^#[A-F0-9]{6}$/'], $this->messages());
             $color->update($request->all());
             return response()->json(['message' => 'Color actualizado exitosamente.'], 200);
+        } catch (ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422);
         } catch (\Exception $th) {
             return response()->json(['error' => 'Error: ' . $th->getMessage()], 500);
         }

@@ -96,20 +96,50 @@
         });
 
         // Hacer Perfil
-        $('.btnSetProfile').click(function() {
-            let imageId = $(this).data('id');
+        $(document).off('click.vehicleProfile', '.btnSetProfile').on('click.vehicleProfile', '.btnSetProfile', function() {
+            let button = $(this);
+            if (button.prop('disabled')) {
+                return;
+            }
+
+            let imageId = button.data('id');
+            let originalHtml = button.html();
+            button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Guardando...');
+
             $.ajax({
                 url: "{{ route('admin.vehicles.images.profile', ':id') }}".replace(':id', imageId),
                 type: "POST",
                 data: { _token: "{{ csrf_token() }}" },
                 success: function(response) {
-                    $.ajax({
-                        url: "{{ route('admin.vehicles.images', $vehicle->id) }}",
-                        type: "GET",
-                        success: function(html) {
-                            $('#formModal .modal-body').html(html);
-                        }
+                    if (!response.success) {
+                        button.prop('disabled', false).html(originalHtml);
+                        Swal.fire('Error', response.message || 'No se pudo establecer la imagen principal.', 'error');
+                        return;
+                    }
+
+                    $('#galleryContainer .btnSetProfile').each(function() {
+                        let currentButton = $(this);
+                        let isProfile = String(currentButton.data('id')) === String(imageId);
+
+                        currentButton
+                            .prop('disabled', false)
+                            .toggleClass('btn-primary', isProfile)
+                            .toggleClass('btn-outline-secondary', !isProfile)
+                            .html(isProfile
+                                ? '<i class="bi bi-star-fill"></i> Perfil'
+                                : '<i class="bi bi-star"></i> Fijar');
+
+                        currentButton.closest('.image-card')
+                            .toggleClass('border-primary shadow', isProfile);
                     });
+
+                    $(document).trigger('vehicle:profile-updated', [response]);
+                    Swal.fire('Éxito', response.message || 'Imagen establecida como principal correctamente.', 'success');
+                },
+                error: function(xhr) {
+                    button.prop('disabled', false).html(originalHtml);
+                    let message = xhr.responseJSON?.message || xhr.responseJSON?.error || 'No se pudo establecer la imagen principal.';
+                    Swal.fire('Error', message, 'error');
                 }
             });
         });

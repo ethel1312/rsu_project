@@ -11,6 +11,7 @@ use App\Models\Color;
 use Illuminate\Http\Request;
 use Yajra\DataTables\Facades\DataTables;
 use App\Models\VehicleImage;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class VehicleController extends Controller
@@ -23,7 +24,10 @@ class VehicleController extends Controller
             return DataTables::of($vehicles)
                 ->addColumn('image', function ($vehicle) {
                     if ($vehicle->profileImage) {
-                        return '<img src="' . asset('storage/' . $vehicle->profileImage->image_path) . '" class="img-thumbnail" style="width: 70px; height: 50px; object-fit: cover;">';
+                        $imageUrl = e(asset('storage/' . $vehicle->profileImage->image_path));
+                        $vehicleName = e($vehicle->name);
+
+                        return '<img src="' . $imageUrl . '" class="vehicle-thumbnail btnVerImagen" data-image="' . $imageUrl . '" data-name="' . $vehicleName . '" alt="' . $vehicleName . '">';
                     }
                     return '<span class="text-muted small">Sin foto</span>';
                 })
@@ -176,15 +180,30 @@ class VehicleController extends Controller
 
     public function setProfileImage($image_id)
     {
-        $image = VehicleImage::findOrFail($image_id);
-        
-        // Quitar el perfil a todas las imágenes de este vehículo
-        VehicleImage::where('vehicle_id', $image->vehicle_id)->update(['is_profile' => false]);
-        
-        // Asignar perfil a la seleccionada
-        $image->update(['is_profile' => true]);
+        $image = DB::transaction(function () use ($image_id) {
+            $requestedImage = VehicleImage::findOrFail($image_id);
 
-        return response()->json(['message' => 'Imagen de perfil actualizada.']);
+            Vehicle::whereKey($requestedImage->vehicle_id)->lockForUpdate()->firstOrFail();
+
+            $image = VehicleImage::whereKey($image_id)
+                ->where('vehicle_id', $requestedImage->vehicle_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            VehicleImage::where('vehicle_id', $image->vehicle_id)
+                ->update(['is_profile' => false]);
+
+            $image->update(['is_profile' => true]);
+
+            return $image;
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Imagen establecida como principal correctamente.',
+            'image_url' => asset('storage/' . $image->image_path),
+            'vehicle_id' => $image->vehicle_id,
+        ]);
     }
 
     public function deleteImage($image_id)

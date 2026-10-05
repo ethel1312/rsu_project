@@ -14,6 +14,30 @@
 @stop
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/dropzone/5.9.3/min/dropzone.min.css">
+    <style>
+        .vehicle-thumbnail {
+            width: 80px;
+            height: 60px;
+            object-fit: cover;
+            border: 1px solid #dfe6f5;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .vehicle-thumbnail:hover {
+            border-color: #5bb8f5;
+            box-shadow: 0 2px 8px rgba(18, 32, 107, 0.18);
+        }
+
+        .vehicle-image-preview {
+            display: block;
+            max-width: 100%;
+            max-height: 70vh;
+            margin: 0 auto;
+            object-fit: contain;
+        }
+    </style>
 @stop
 @section('content')
     <div class="card">
@@ -53,6 +77,21 @@
             </div>
         </div>
     </div>
+
+    <!-- Modal de visualización de imagen -->
+    <div class="modal fade" id="vehicleImageModal" tabindex="-1" aria-labelledby="vehicleImageModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="vehicleImageModalLabel"></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body text-center">
+                    <img id="vehicleImagePreview" class="vehicle-image-preview" src="" alt="">
+                </div>
+            </div>
+        </div>
+    </div>
 @stop
 
 @section('js')
@@ -79,6 +118,26 @@
                 { data: 'delete', name: 'delete', orderable: false, searchable: false, className: 'text-center align-middle' }
             ],
             language: { url: 'https://cdn.datatables.net/plug-ins/1.10.16/i18n/Spanish.json' }
+        });
+
+        $(document).on('vehicle:profile-updated', function() {
+            table.ajax.reload(null, false);
+        });
+
+        $(document).on('click', '.btnVerImagen', function() {
+            var imageUrl = $(this).data('image');
+            var vehicleName = $(this).data('name');
+
+            $('#vehicleImageModalLabel').text(vehicleName);
+            $('#vehicleImagePreview').attr({
+                src: imageUrl,
+                alt: vehicleName
+            });
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('vehicleImageModal')).show();
+        });
+
+        $('#vehicleImageModal').on('hidden.bs.modal', function() {
+            $('#vehicleImagePreview').attr('src', '').attr('alt', '');
         });
 
         // Botón Nuevo

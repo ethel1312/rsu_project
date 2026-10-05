@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Brand;
 use App\Models\Brandmodel;
 use Carbon\Carbon;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Yajra\DataTables\Facades\DataTables;
@@ -76,6 +77,20 @@ class BrandmdelController extends Controller
         return view('admin.models.create', compact('brands', 'model'));
     }
 
+    private function messages(): array
+    {
+        return [
+            'name.required'     => 'El nombre del modelo es obligatorio.',
+            'name.max'          => 'El nombre no puede superar los 255 caracteres.',
+            'name.unique'       => 'Ya existe un modelo con ese nombre.',
+            'code.required'     => 'El código del modelo es obligatorio.',
+            'code.max'          => 'El código no puede superar los 50 caracteres.',
+            'code.unique'       => 'Ya existe un modelo con ese código.',
+            'brand_id.required' => 'Debe seleccionar una marca.',
+            'brand_id.exists'   => 'La marca seleccionada no existe.',
+        ];
+    }
+
     /**
      * Store a newly created resource in storage.
      */
@@ -85,10 +100,10 @@ class BrandmdelController extends Controller
             $request->validate([
                 'name' => 'required|unique:brandmodels', // Corregido el nombre de la tabla
                 'brand_id' => 'required'
-            ]);
+            ], $this->messages());
             
             Brandmodel::create($request->all());
-               
+            
             return response()->json(['message' => 'Modelo registrado exitosamente.'], 200);
         } catch (\Exception $th) {
             return response()->json(['error' => 'Error de registro: ' . $th->getMessage()], 500);
@@ -124,7 +139,7 @@ class BrandmdelController extends Controller
             $request->validate([
                 'name' => 'required|unique:brandmodels,name,' . $id,
                 'brand_id' => 'required'
-            ]);
+            ],  $this->messages());
             
             // Eliminamos la lógica de imagen porque los modelos no tienen logo
             $model->update($request->all());
@@ -144,6 +159,14 @@ class BrandmdelController extends Controller
             $model = Brandmodel::find($id);
             $model->delete();
             return response()->json(['message' => 'Modelo eliminado exitosamente.'], 200);
+        } catch (QueryException $e) {
+            // 23000 = restricción de llave foránea: el modelo está en uso
+            if ($e->getCode() === '23000') {
+                return response()->json([
+                    'error' => 'No se puede eliminar: este modelo está asignado a uno o más vehículos.'
+                ], 409);
+            }
+            return response()->json(['error' => 'Error de eliminación: ' . $e->getMessage()], 500);
         } catch (\Exception $th) {
             return response()->json(['error' => 'Error de eliminación: ' . $th->getMessage()], 500);
         }

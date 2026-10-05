@@ -832,7 +832,33 @@ return [
         [
             'text' => 'Gestión de Personal',
             'icon' => 'bi bi-people',
-            'url' => '#',
+            'submenu' => [
+                [
+                    'text' => 'Tipos de personal',
+                    'route' => 'admin.employee_types.index',
+                    'icon' => 'bi bi-person-badge',
+                ],
+                [
+                    'text' => 'Personal',
+                    'route' => 'admin.employees.index',
+                    'icon' => 'bi bi-person',
+                ],
+                [
+                    'text' => 'Contratos',
+                    'route' => 'admin.contracts.index',
+                    'icon' => 'bi bi-file-earmark-text',
+                ],
+                [
+                    'text' => 'Asistencias',
+                    'route' => 'admin.attendances.index',
+                    'icon' => 'bi bi-calendar-check',
+                ],
+                [
+                    'text' => 'Vacaciones',
+                    'route' => 'admin.vacations.index',
+                    'icon' => 'bi bi-airplane',
+                ]
+            ],
         ],
         [
             'text' => 'Programación',

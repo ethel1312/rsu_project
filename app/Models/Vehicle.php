@@ -35,7 +35,7 @@ class Vehicle extends Model
     }
 
     // Relaciones con los catálogos
-    public function type() { return $this->belongsTo(VehicleType::class, 'vehicle_type_id'); }
+    public function type() { return $this->belongsTo(VehicleType::class, 'type_id'); }
     public function brand() { return $this->belongsTo(Brand::class); }
     public function brandModel() { return $this->belongsTo(Brandmodel::class, 'model_id'); } 
     public function color() { return $this->belongsTo(Color::class); }
