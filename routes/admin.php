@@ -49,4 +49,8 @@ Route::resource('employees', EmployeeController::class)->except(['show'])->names
 
 // Route::resource('vacations', VacationController::class)->except(['show'])->names('admin.vacations');
 
-// Route::resource('attendances', AttendanceController::class)->except(['show'])->names('admin.attendances');
+Route::middleware('auth')->group(function () {
+    Route::get('attendances/employees', [AttendanceController::class, 'searchEmployees'])->name('admin.attendances.employees');
+    Route::get('attendances/preview', [AttendanceController::class, 'preview'])->name('admin.attendances.preview');
+    Route::resource('attendances', AttendanceController::class)->except(['show'])->names('admin.attendances');
+});
