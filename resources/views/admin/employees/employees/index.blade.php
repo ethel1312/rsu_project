@@ -62,6 +62,15 @@
             border-radius: 4px;
             font-size: 12px;
         }
+
+        .employee-thumbnail {
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+
+        .employee-thumbnail:hover {
+            transform: scale(1.05);
+        }
     </style>
 @stop
 
@@ -117,6 +126,34 @@
 
         </div>
 
+    </div>
+
+    {{-- Modal para visualizar foto del personal --}}
+    <div class="modal fade" id="employeeImageModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content">
+
+                <div class="modal-header">
+                    <h5 class="modal-title" id="employeeImageModalLabel">
+                        Foto del personal
+                    </h5>
+
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="modal"
+                            aria-label="Cerrar">
+                    </button>
+                </div>
+
+                <div class="modal-body text-center">
+                    <img id="employeeImagePreview"
+                        src=""
+                        alt=""
+                        style="max-width: 100%; max-height: 70vh; object-fit: contain;">
+                </div>
+
+            </div>
+        </div>
     </div>
 
 @stop
@@ -480,6 +517,27 @@
 
             });
 
+        });
+
+        $(document).on('click', '.btnVerImagenPersonal', function() {
+
+            var imageUrl = $(this).data('image');
+            var employeeName = $(this).data('name');
+
+            $('#employeeImageModalLabel').text(employeeName);
+
+            $('#employeeImagePreview').attr({
+                src: imageUrl,
+                alt: employeeName
+            });
+
+            bootstrap.Modal
+                .getOrCreateInstance(document.getElementById('employeeImageModal'))
+                .show();
+        });
+
+        $('#employeeImageModal').on('hidden.bs.modal', function() {
+            $('#employeeImagePreview').attr('src', '').attr('alt', '');
         });
 
     });

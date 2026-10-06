@@ -54,8 +54,8 @@ class ContractController extends Controller
                 ->addColumn('delete', function ($c) {
                     return '<form action="' . route('admin.contracts.destroy', $c->id) . '" method="POST" class="frmEliminar d-inline">'
                         . csrf_field() . method_field('DELETE')
-                        . '<button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar">'
-                        . '<i class="bi bi-trash"></i>'
+                        . '<button type="submit" class="btn btn-sm btn-danger" title="Eliminar">'
+                        . '<i class="bi bi-trash3-fill"></i>'
                         . '</button>'
                         . '</form>';
                 })
@@ -64,6 +64,31 @@ class ContractController extends Controller
         }
 
         return view('admin.employees.contracts.index');
+    }
+
+    private function messages()
+    {
+        return [
+            'employee_id.required' => 'El empleado es obligatorio.',
+            'employee_id.exists' => 'El empleado seleccionado no existe.',
+
+            'contract_type.required' => 'El tipo de contrato es obligatorio.',
+            'contract_type.in' => 'El tipo de contrato seleccionado no es válido.',
+
+            'start_date.required' => 'La fecha de inicio es obligatoria.',
+            'start_date.date' => 'La fecha de inicio no tiene un formato válido.',
+
+            'end_date.required_if' => 'La fecha de fin es obligatoria para los contratos temporales.',
+            'end_date.date' => 'La fecha de fin no tiene un formato válido.',
+            'end_date.after' => 'La fecha de fin debe ser posterior a la fecha de inicio.',
+
+            'salary.required' => 'El salario es obligatorio.',
+            'salary.numeric' => 'El salario debe ser un valor numérico.',
+            'salary.min' => 'El salario no puede ser negativo.',
+
+            'trial_period_months.integer' => 'El período de prueba debe ser un número entero.',
+            'trial_period_months.min' => 'El período de prueba no puede ser negativo.',
+        ];
     }
 
     public function create()
@@ -85,7 +110,7 @@ class ContractController extends Controller
             'end_date' => 'nullable|date|required_if:contract_type,Temporal|after:start_date',
             'salary' => 'required|numeric|min:0',
             'trial_period_months' => 'nullable|integer|min:0',
-        ]);
+        ], $this->messages());
 
         $employeeId = $request->employee_id;
         $type = $request->contract_type;
@@ -172,14 +197,17 @@ class ContractController extends Controller
 
     public function update(Request $request, Contract $contract)
     {
-        $request->validate([
-            'employee_id' => 'required|exists:employees,id',
-            'contract_type' => 'required|in:Permanente,Nombrado,Temporal',
-            'start_date' => 'required|date',
-            'end_date' => 'nullable|date|required_if:contract_type,Temporal|after:start_date',
-            'salary' => 'required|numeric|min:0',
-            'trial_period_months' => 'nullable|integer|min:0',
-        ]);
+        $request->validate(
+            [
+                'employee_id' => 'required|exists:employees,id',
+                'contract_type' => 'required|in:Permanente,Nombrado,Temporal',
+                'start_date' => 'required|date',
+                'end_date' => 'nullable|date|required_if:contract_type,Temporal|after:start_date',
+                'salary' => 'required|numeric|min:0',
+                'trial_period_months' => 'nullable|integer|min:0',
+            ],
+            $this->messages()
+        );
 
         $employeeId = $request->employee_id;
         $type = $request->contract_type;
@@ -256,7 +284,7 @@ class ContractController extends Controller
 
             if ($previousContract && $previousContract->end_date->diffInDays($startDate) <= 1) {
                 return response()->json([
-                    'error' => 'Para evitar estabilidad laboral, debe existir un período de corte con el contrato previo (no puede iniciar al día siguiente).'
+                    'error' => 'No se puede iniciar un nuevo contrato temporal al día siguiente del contrato anterior. Debe existir un período de corte.'
                 ], 422);
             }
 

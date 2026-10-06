@@ -62,6 +62,7 @@
             padding: 8px 22px;
         }
         .btn-modal-guardar:hover { background-color: #0284c7 !important; }
+        
     </style>
 @stop
 
@@ -111,11 +112,11 @@
             columns: [
                 { data: 'dni', name: 'employee.dni', className: 'align-middle font-weight-bold' },
                 { data: 'employee_name', name: 'employee.first_name', className: 'align-middle' },
-                { data: 'contract_type_badge', name: 'contract_type', className: 'align-middle' },
-                { data: 'start_date_formatted', name: 'start_date', className: 'align-middle' },
-                { data: 'end_date_formatted', name: 'end_date', className: 'align-middle' },
-                { data: 'salary_formatted', name: 'salary', className: 'align-middle' },
-                { data: 'position', name: 'employee.employeeType.name', className: 'align-middle' },
+                { data: 'contract_type_badge', name: 'contract_type', className: 'align-middle text-center' },
+                { data: 'start_date_formatted', name: 'start_date', className: 'align-middle text-center' },
+                { data: 'end_date_formatted', name: 'end_date', className: 'align-middle text-center' },
+                { data: 'salary_formatted', name: 'salary', className: 'align-middle text-number' },
+                { data: 'position', name: 'employee.employeeType.name', className: 'align-middle text-center' },
                 { data: 'status_badge', name: 'is_active', className: 'align-middle text-center' },
                 { data: 'edit', name: 'edit', orderable: false, searchable: false, className: 'text-center align-middle' },
                 { data: 'delete', name: 'delete', orderable: false, searchable: false, className: 'text-center align-middle' }

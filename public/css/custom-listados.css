@@ -135,3 +135,35 @@ table.dataTable tbody td {
     border-color: var(--rsu-sky);
     box-shadow: 0 0 0 .2rem rgba(91, 184, 245, .25);
 }
+
+
+/* Alineación de columnas */
+.text-left {
+    text-align: left;
+}
+
+.text-center {
+    text-align: center;
+}
+
+.text-right {
+    text-align: right;
+}
+
+/* Valores monetarios y numéricos */
+.text-number {
+    text-align: right;
+    white-space: nowrap;
+}
+
+/* Textos largos */
+.text-description {
+    text-align: left;
+    max-width: 300px;
+}
+
+/* Estados, badges e indicadores */
+.text-status {
+    text-align: center;
+    white-space: nowrap;
+}

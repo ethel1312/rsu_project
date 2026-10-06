@@ -38,11 +38,16 @@ class EmployeeController extends Controller
 
                     if ($employee->image_path) {
 
-                        return '<img src="' . asset('storage/' . $employee->image_path) . '"
-                                    class="employee-thumbnail"
-                                    alt="Foto">';
+                        $imageUrl = e(asset('storage/' . $employee->image_path));
+                        $employeeName = e($employee->first_name . ' ' . $employee->last_name);
 
-                    }
+                        return '<img src="' . $imageUrl . '"
+                                    class="employee-thumbnail btnVerImagenPersonal"
+                                    data-image="' . $imageUrl . '"
+                                    data-name="' . $employeeName . '"
+                                    alt="' . $employeeName . '">';
+
+                                            }
 
                     return '<div class="employee-placeholder">
                                 <i class="bi bi-image"></i>
