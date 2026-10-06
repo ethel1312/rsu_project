@@ -71,12 +71,64 @@ class VehicleController extends Controller
         return view('admin.vehicles.index');
     }
 
+    private function messages(): array
+    {
+        return [
+            'name.required' =>
+                'El nombre del vehículo es obligatorio.',
+
+            'code.required' =>
+                'El código del vehículo es obligatorio.',
+
+            'code.unique' =>
+                'Ya existe un vehículo con ese código.',
+
+            'plate.required' =>
+                'La placa del vehículo es obligatoria.',
+
+            'plate.unique' =>
+                'Ya existe un vehículo con esa placa.',
+
+            'plate.regex' =>
+                'La placa debe tener un formato válido.',
+
+            'year.required' =>
+                'El año del vehículo es obligatorio.',
+
+            'year.integer' =>
+                'El año debe ser un número entero.',
+
+            'year.min' =>
+                'El año no puede ser menor a 1980.',
+
+            'year.max' =>
+                'El año no puede ser mayor al año permitido.',
+
+            'type_id.required' =>
+                'El tipo de vehículo es obligatorio.',
+
+            'brand_id.required' =>
+                'La marca del vehículo es obligatoria.',
+
+            'model_id.required' =>
+                'El modelo del vehículo es obligatorio.',
+
+            'color_id.required' =>
+                'El color del vehículo es obligatorio.',
+        ];
+    }
+
     public function create()
     {
         $vehicle = new Vehicle();
         $types = VehicleType::pluck('name', 'id');
-        $brands = Brand::pluck('name', 'id');
-        $models = Brandmodel::pluck('name', 'id'); 
+
+        // Solo marcas que tienen modelos registrados
+        $brands = Brand::whereHas('models')
+            ->pluck('name', 'id');
+
+        $models = [];
+
         $colors = Color::pluck('name', 'id');
 
         return view('admin.vehicles.create', compact('vehicle', 'types', 'brands', 'models', 'colors'));
@@ -88,14 +140,21 @@ class VehicleController extends Controller
             $request->validate([
                 'name' => 'required',
                 'code' => 'required|unique:vehicles,code',
-                
-                'plate' => ['required', 'unique:vehicles,plate', 'regex:/^([A-Z0-9]{6}|[A-Z0-9]{2}-[A-Z0-9]{4}|[A-Z0-9]{3}-[A-Z0-9]{3})$/i'],
-                'year' => 'required|integer|min:1980|max:' . (date('Y') + 1), 
+
+                'plate' => [
+                    'required',
+                    'unique:vehicles,plate',
+                    'regex:/^([A-Z0-9]{6}|[A-Z0-9]{2}-[A-Z0-9]{4}|[A-Z0-9]{3}-[A-Z0-9]{3})$/i'
+                ],
+
+                'year' => 'required|integer|min:1980|max:' . (date('Y') + 1),
+
                 'type_id' => 'required',
                 'brand_id' => 'required',
                 'model_id' => 'required',
                 'color_id' => 'required',
-            ]);
+
+            ], $this->messages());
 
             Vehicle::create($request->all());
             return response()->json(['message' => 'Vehículo registrado exitosamente.'], 200);
@@ -108,8 +167,15 @@ class VehicleController extends Controller
     {
         $vehicle = Vehicle::findOrFail($id);
         $types = VehicleType::pluck('name', 'id');
-        $brands = Brand::pluck('name', 'id');
-        $models = Brandmodel::pluck('name', 'id'); 
+        
+        // Solo marcas que tienen modelos registrados
+        $brands = Brand::whereHas('models')
+            ->pluck('name', 'id');
+
+        // Modelos de la marca actual del vehículo
+        $models = Brandmodel::where('brand_id', $vehicle->brand_id)
+            ->pluck('name', 'id');
+
         $colors = Color::pluck('name', 'id');
 
         return view('admin.vehicles.edit', compact('vehicle', 'types', 'brands', 'models', 'colors'));
@@ -121,20 +187,38 @@ class VehicleController extends Controller
             $vehicle = Vehicle::find($id);
             $request->validate([
                 'name' => 'required',
-                'code' => 'required|unique:vehicles,code,' . $id, 
-                'plate' => ['required', 'unique:vehicles,plate,' . $id, 'regex:/^([A-Z0-9]{6}|[A-Z0-9]{2}-[A-Z0-9]{4}|[A-Z0-9]{3}-[A-Z0-9]{3})$/i'],
+
+                'code' => 'required|unique:vehicles,code,' . $id,
+
+                'plate' => [
+                    'required',
+                    'unique:vehicles,plate,' . $id,
+                    'regex:/^([A-Z0-9]{6}|[A-Z0-9]{2}-[A-Z0-9]{4}|[A-Z0-9]{3}-[A-Z0-9]{3})$/i'
+                ],
+
                 'year' => 'required|integer|min:1980|max:' . (date('Y') + 1),
+
                 'type_id' => 'required',
                 'brand_id' => 'required',
                 'model_id' => 'required',
                 'color_id' => 'required',
-            ]);
+
+            ], $this->messages());
 
             $vehicle->update($request->all());
             return response()->json(['message' => 'Vehículo actualizado exitosamente.'], 200);
         } catch (\Exception $th) {
             return response()->json(['error' => 'Error: ' . $th->getMessage()], 500);
         }
+    }
+
+    public function getModelsByBrand($brandId)
+    {
+        $models = Brandmodel::where('brand_id', $brandId)
+            ->orderBy('name')
+            ->pluck('name', 'id');
+
+        return response()->json($models);
     }
 
     public function destroy(string $id)

@@ -7,6 +7,8 @@ use App\Models\VehicleType;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
+
 use Yajra\DataTables\Facades\DataTables;
 
 class VehicleTypeController extends Controller

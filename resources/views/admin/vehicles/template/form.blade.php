@@ -24,11 +24,21 @@
     </div>
     <div class="col-md-3 mb-3">
         {!! Form::label('brand_id', 'Marca *') !!}
-        {!! Form::select('brand_id', $brands, null, ['class' => 'form-select', 'placeholder' => 'Seleccione...', 'required']) !!}
+        {!! Form::select('brand_id', $brands, null, [
+            'class' => 'form-select',
+            'id' => 'brand_id',
+            'placeholder' => 'Seleccione...',
+            'required'
+        ]) !!}
     </div>
     <div class="col-md-3 mb-3">
         {!! Form::label('model_id', 'Modelo *') !!}
-        {!! Form::select('model_id', $models, null, ['class' => 'form-select', 'placeholder' => 'Seleccione...', 'required']) !!}
+        {!! Form::select('model_id', $models, null, [
+            'class' => 'form-select',
+            'id' => 'model_id',
+            'placeholder' => 'Seleccione una marca primero',
+            'required'
+        ]) !!}
     </div>
     <div class="col-md-3 mb-3">
         {!! Form::label('color_id', 'Color *') !!}
@@ -59,3 +69,68 @@
         {!! Form::textarea('description', null, ['class' => 'form-control', 'rows' => 2, 'placeholder' => 'Detalles extra del vehículo...']) !!}
     </div>
 </div>
+
+<script>
+$(document).off('change', '#brand_id').on('change', '#brand_id', function() {
+
+    const brandId = $(this).val();
+    const modelSelect = $('#model_id');
+
+    modelSelect.empty();
+
+    if (!brandId) {
+        modelSelect.append(
+            '<option value="">Seleccione una marca primero</option>'
+        );
+        return;
+    }
+
+    modelSelect.append(
+        '<option value="">Cargando modelos...</option>'
+    );
+
+    $.ajax({
+        url: "{{ route('admin.vehicles.models', ':brandId') }}"
+            .replace(':brandId', brandId),
+
+        type: 'GET',
+
+        success: function(models) {
+
+            modelSelect.empty();
+
+            modelSelect.append(
+                '<option value="">Seleccione...</option>'
+            );
+
+            $.each(models, function(id, name) {
+
+                modelSelect.append(
+                    $('<option>', {
+                        value: id,
+                        text: name
+                    })
+                );
+
+            });
+
+        },
+
+        error: function() {
+
+            modelSelect.empty();
+
+            modelSelect.append(
+                '<option value="">No se pudieron cargar los modelos</option>'
+            );
+
+            Swal.fire(
+                'Error',
+                'No se pudieron cargar los modelos de la marca.',
+                'error'
+            );
+        }
+    });
+
+});
+</script>
