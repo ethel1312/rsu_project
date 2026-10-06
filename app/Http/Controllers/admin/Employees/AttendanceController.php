@@ -16,15 +16,36 @@ class AttendanceController extends Controller
 
     public function index(Request $request)
     {
-        $request->validate(['date' => 'nullable|date_format:Y-m-d'], [
-            'date.date_format' => 'Ingrese una fecha válida.',
+        $data = $request->validate([
+            'start_date' => [$request->ajax() ? 'required' : 'nullable', 'date_format:Y-m-d'],
+            'end_date' => [$request->ajax() ? 'required' : 'nullable', 'date_format:Y-m-d', 'after_or_equal:start_date'],
+            'employee' => 'nullable|string|max:100',
+        ], [
+            'start_date.required' => 'La fecha de inicio es obligatoria.',
+            'start_date.date_format' => 'Ingrese una fecha de inicio válida.',
+            'end_date.required' => 'La fecha de fin es obligatoria.',
+            'end_date.date_format' => 'Ingrese una fecha de fin válida.',
+            'end_date.after_or_equal' => 'La fecha de inicio no puede ser mayor que la fecha de fin.',
+            'employee.max' => 'La búsqueda no debe superar los 100 caracteres.',
         ]);
-        $date = $request->input('date') ?: now(Attendance::TIMEZONE)->format('Y-m-d');
+        $today = now(Attendance::TIMEZONE)->format('Y-m-d');
+        $startDate = $data['start_date'] ?? $today;
+        $endDate = $data['end_date'] ?? $today;
 
         if ($request->ajax()) {
             $records = Attendance::query()->join('employees', 'employees.id', '=', 'attendances.employee_id')
-                ->where('attendances.date', $date)
+                ->whereBetween('attendances.date', [$startDate, $endDate])
                 ->select('attendances.*', 'employees.dni', 'employees.first_name', 'employees.last_name');
+
+            $employee = trim($data['employee'] ?? '');
+            foreach (preg_split('/\s+/u', $employee, -1, PREG_SPLIT_NO_EMPTY) as $word) {
+                $word = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $word);
+                $records->where(function ($query) use ($word) {
+                    $query->whereRaw("employees.dni LIKE ? ESCAPE '!'", ['%'.$word.'%'])
+                        ->orWhereRaw("employees.first_name LIKE ? ESCAPE '!'", ['%'.$word.'%'])
+                        ->orWhereRaw("employees.last_name LIKE ? ESCAPE '!'", ['%'.$word.'%']);
+                });
+            }
 
             return DataTables::of($records)
                 ->editColumn('date', fn ($record) => $record->date->format('d/m/Y'))
@@ -39,7 +60,7 @@ class AttendanceController extends Controller
                 ->rawColumns(['status', 'edit', 'delete'])->make(true);
         }
 
-        return view('admin.employees.attendances.index', compact('date'));
+        return view('admin.employees.attendances.index', compact('startDate', 'endDate'));
     }
 
     public function create(Request $request)

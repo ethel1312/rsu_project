@@ -78,15 +78,36 @@ class AttendanceTest extends TestCase
         $today = $this->createAttendance();
         $this->createAttendance('09:00', ['date' => '2026-10-05']);
         $this->createAttendance('09:00', ['date' => '2026-10-07']);
-        $this->get(route('admin.attendances.index'))->assertOk()->assertSee('value="2026-10-06"', false);
+        $this->get(route('admin.attendances.index'))->assertOk()
+            ->assertSee('id="startDate" class="form-control" value="2026-10-06"', false)
+            ->assertSee('id="endDate" class="form-control" value="2026-10-06"', false);
         $this->get(route('admin.attendances.create'))->assertOk()->assertSee('21:30:00')->assertDontSee('01234567');
         $this->get(route('admin.attendances.edit', $today))->assertOk()->assertSee('Actualizar Asistencia')->assertSee('01234567');
-        $this->getJson(route('admin.attendances.index'), ['X-Requested-With' => 'XMLHttpRequest'])
+        $this->getJson(route('admin.attendances.index', ['start_date' => '2026-10-06', 'end_date' => '2026-10-06']), ['X-Requested-With' => 'XMLHttpRequest'])
             ->assertOk()->assertJsonPath('recordsTotal', 1)->assertJsonPath('data.0.id', $today->id);
         foreach (['2026-10-05', '2026-10-07'] as $date) {
-            $this->getJson(route('admin.attendances.index', ['date' => $date]), ['X-Requested-With' => 'XMLHttpRequest'])
+            $this->getJson(route('admin.attendances.index', ['start_date' => $date, 'end_date' => $date]), ['X-Requested-With' => 'XMLHttpRequest'])
                 ->assertOk()->assertJsonPath('recordsTotal', 1);
         }
+    }
+
+    public function test_list_filters_by_date_range_and_employee(): void
+    {
+        $this->admin();
+        $this->createAttendance('08:00', ['date' => '2026-10-05']);
+        $this->createAttendance('09:00');
+        $this->createAttendance('10:00', ['date' => '2026-10-07']);
+        $other = $this->employee->replicate();
+        $other->fill(['dni' => '87654321', 'first_name' => 'Luis', 'last_name' => 'Otro', 'email' => 'otro@example.test'])->save();
+        $this->createAttendance('11:00', ['employee_id' => $other->id]);
+
+        $range = ['start_date' => '2026-10-05', 'end_date' => '2026-10-07'];
+        $this->getJson(route('admin.attendances.index', $range), ['X-Requested-With' => 'XMLHttpRequest'])
+            ->assertOk()->assertJsonPath('recordsTotal', 4);
+        $this->getJson(route('admin.attendances.index', $range + ['employee' => 'Ana Pérez']), ['X-Requested-With' => 'XMLHttpRequest'])
+            ->assertOk()->assertJsonPath('recordsFiltered', 3);
+        $this->getJson(route('admin.attendances.index', $range + ['employee' => '87654321']), ['X-Requested-With' => 'XMLHttpRequest'])
+            ->assertOk()->assertJsonPath('recordsFiltered', 1)->assertJsonPath('data.0.dni', '87654321');
     }
 
     public function test_marks_alternate_chronologically_and_restart_each_day(): void
@@ -155,7 +176,12 @@ class AttendanceTest extends TestCase
             'employee_id' => 9999, 'date' => '2026-02-30', 'time' => '25:70',
             'status' => 'invalid', 'notes' => str_repeat('x', 1001),
         ])->assertUnprocessable()->assertJsonValidationErrors(['employee_id', 'date', 'time', 'status', 'notes']);
-        $this->getJson(route('admin.attendances.index', ['date' => 'wrong']))->assertUnprocessable();
+        $this->getJson(route('admin.attendances.index', ['start_date' => 'wrong', 'end_date' => '2026-10-06']), ['X-Requested-With' => 'XMLHttpRequest'])
+            ->assertUnprocessable()->assertJsonValidationErrors('start_date');
+        $this->getJson(route('admin.attendances.index', ['start_date' => '2026-10-07', 'end_date' => '2026-10-06']), ['X-Requested-With' => 'XMLHttpRequest'])
+            ->assertUnprocessable()->assertJsonValidationErrors('end_date');
+        $this->getJson(route('admin.attendances.index'), ['X-Requested-With' => 'XMLHttpRequest'])
+            ->assertUnprocessable()->assertJsonValidationErrors(['start_date', 'end_date']);
         $this->getJson(route('admin.attendances.edit', 9999))->assertNotFound();
         $this->putJson(route('admin.attendances.update', 9999), $this->data())->assertNotFound();
         $this->deleteJson(route('admin.attendances.destroy', 9999))->assertNotFound();
@@ -177,7 +203,8 @@ class AttendanceTest extends TestCase
     {
         $this->admin();
         $this->createAttendance('08:00', ['notes' => '<script>alert(1)</script>']);
-        $this->getJson(route('admin.attendances.index', ['search' => ['value' => '01234567', 'regex' => false],
+        $this->getJson(route('admin.attendances.index', ['start_date' => '2026-10-06', 'end_date' => '2026-10-06',
+            'search' => ['value' => '01234567', 'regex' => false],
             'columns' => [['data' => 'dni', 'name' => 'employees.dni', 'searchable' => 'true', 'orderable' => 'true']],
         ]), ['X-Requested-With' => 'XMLHttpRequest'])->assertOk()->assertJsonPath('recordsFiltered', 1)
             ->assertJsonPath('data.0.notes', '&lt;script&gt;alert(1)&lt;/script&gt;');

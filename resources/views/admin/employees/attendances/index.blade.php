@@ -31,19 +31,33 @@
 @stop
 
 @section('content')
-    <div class="card">
+    <div class="card mb-3">
         <div class="card-body">
-            <div class="row align-items-end g-2 mb-4">
-                <div class="col-sm-5 col-md-3">
-                    <label for="filterDate" class="form-label">Fecha de asistencia</label>
-                    <input type="date" id="filterDate" class="form-control" value="{{ $date }}" required>
+            <div class="row align-items-end g-2">
+                <div class="col-12 col-lg-3">
+                    <label for="startDate" class="form-label">Fecha de inicio</label>
+                    <input type="date" id="startDate" class="form-control" value="{{ $startDate }}" required>
                 </div>
-                <div class="col-sm-7 col-md-9 d-flex gap-2 flex-wrap">
-                    <button type="button" class="btn btn-outline-secondary" id="previousDay" aria-label="Día anterior"><i class="bi bi-chevron-left"></i> Anterior</button>
-                    <button type="button" class="btn btn-outline-primary" id="today">Hoy</button>
-                    <button type="button" class="btn btn-outline-secondary" id="nextDay">Siguiente <i class="bi bi-chevron-right"></i></button>
+                <div class="col-12 col-lg-3">
+                    <label for="endDate" class="form-label">Fecha de fin</label>
+                    <input type="date" id="endDate" class="form-control" value="{{ $endDate }}" required>
+                </div>
+                <div class="col-12 col-lg-3">
+                    <label for="filterEmployee" class="form-label">Buscar empleado</label>
+                    <input type="search" id="filterEmployee" class="form-control" maxlength="100" placeholder="DNI, nombre o apellido...">
+                </div>
+                <div class="col-12 col-lg-3 d-flex gap-2">
+                    <button type="button" class="btn btn-primary" id="filter"><i class="bi bi-funnel-fill"></i> Filtrar</button>
+                    <button type="button" class="btn btn-outline-secondary" id="clearFilters"><i class="bi bi-eraser"></i> Limpiar</button>
                 </div>
             </div>
+            <div class="mt-2 mb-4">
+                <button type="button" class="btn btn-outline-primary" id="today"><i class="bi bi-calendar-event"></i> Hoy</button>
+            </div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-body">
             <div class="table-responsive">
                 <table class="table table-striped" id="DataTable" style="width:100%">
                     <thead><tr>
@@ -90,7 +104,11 @@ $(document).ready(function () {
         serverSide: true,
         ajax: {
             url: @json(route('admin.attendances.index')),
-            data: function (data) { data.date = $('#filterDate').val() || currentDate(); },
+            data: function (data) {
+                data.start_date = $('#startDate').val();
+                data.end_date = $('#endDate').val();
+                data.employee = $('#filterEmployee').val().trim();
+            },
             error: function (xhr) { showError(xhr, 'No se pudo cargar el listado de asistencias.'); }
         },
         order: [[4, 'asc']],
@@ -109,18 +127,29 @@ $(document).ready(function () {
         language: {url: 'https://cdn.datatables.net/plug-ins/1.10.16/i18n/Spanish.json'}
     });
 
-    $('#filterDate').on('change', function () {
-        if (!this.value) this.value = currentDate();
-        if (this.checkValidity()) table.ajax.reload();
-    });
-    $('#today').on('click', function () { $('#filterDate').val(currentDate()).trigger('change'); });
-    function moveDay(days) {
-        const date = new Date(($('#filterDate').val() || currentDate()) + 'T12:00:00Z');
-        date.setUTCDate(date.getUTCDate() + days);
-        $('#filterDate').val(date.toISOString().slice(0, 10)).trigger('change');
+    function reloadFilteredTable() {
+        const startDate = $('#startDate').val();
+        const endDate = $('#endDate').val();
+        if (!startDate || !endDate) {
+            Swal.fire('Error de Validación', 'Debe ingresar las fechas de inicio y fin.', 'error');
+            return;
+        }
+        if (startDate > endDate) {
+            Swal.fire('Error de Validación', 'La fecha de inicio no puede ser mayor que la fecha de fin.', 'error');
+            return;
+        }
+        table.ajax.reload();
     }
-    $('#previousDay').on('click', function () { moveDay(-1); });
-    $('#nextDay').on('click', function () { moveDay(1); });
+    $('#filter').on('click', reloadFilteredTable);
+    $('#filterEmployee').on('keydown', function (event) {
+        if (event.key === 'Enter') reloadFilteredTable();
+    });
+    $('#today, #clearFilters').on('click', function () {
+        const today = currentDate();
+        $('#startDate, #endDate').val(today);
+        if (this.id === 'clearFilters') $('#filterEmployee').val('');
+        table.ajax.reload();
+    });
 
     let previewRequest;
     function previewType() {
@@ -196,7 +225,7 @@ $(document).ready(function () {
         }, error: function (xhr) { showError(xhr, 'No se pudo cargar el formulario de asistencia.'); }});
     }
     $('#btnNuevo').on('click', function () {
-        openForm(@json(route('admin.attendances.create')), 'Nueva Asistencia', {date: $('#filterDate').val()});
+        openForm(@json(route('admin.attendances.create')), 'Nueva Asistencia', {date: $('#endDate').val()});
     });
     $(document).on('click', '.btnEditar', function () {
         openForm(@json(route('admin.attendances.edit', ':id')).replace(':id', $(this).data('id')), 'Editar Asistencia');
