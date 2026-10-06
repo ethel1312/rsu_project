@@ -35,6 +35,12 @@ Route::post('vehicles/{id}/images', [VehicleController::class, 'uploadImage'])->
 Route::post('vehicles/images/{image_id}/profile', [VehicleController::class, 'setProfileImage'])->name('admin.vehicles.images.profile');
 Route::delete('vehicles/images/{image_id}', [VehicleController::class, 'deleteImage'])->name('admin.vehicles.images.destroy');
 
+
+//contratoss
+// Contratos
+Route::resource('contracts', ContractController::class)->names('admin.contracts');
+Route::patch('contracts/{contract}/toggle-status', [ContractController::class, 'toggleStatus'])->name('admin.contracts.toggle-status');
+
 /*
 |--------------------------------------------------------------------------
 | GESTIÓN DE PERSONAL

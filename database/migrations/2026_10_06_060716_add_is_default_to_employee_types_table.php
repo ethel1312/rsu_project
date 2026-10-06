@@ -9,14 +9,16 @@ return new class extends Migration
     /**
      * Run the migrations.
      */
-    public function up()
+    public function up(): void
     {
         Schema::table('employee_types', function (Blueprint $table) {
-            $table->boolean('is_default')->default(false)->after('description');
+            if (!Schema::hasColumn('employee_types', 'is_default')) {
+                $table->boolean('is_default')->default(false)->after('description');
+            }
         });
     }
 
-    public function down()
+    public function down(): void
     {
         Schema::table('employee_types', function (Blueprint $table) {
             $table->dropColumn('is_default');

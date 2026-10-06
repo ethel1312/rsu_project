@@ -27,4 +27,18 @@ class Employee extends Model
     {
         return $this->belongsTo(EmployeeType::class, 'employee_type_id');
     }
+
+    public function contracts()
+    {
+        return $this->hasMany(\App\Models\Employees\Contract::class);
+    }
+
+    public function getFullNameAttribute()
+    {
+        // Revisa todas las combinaciones usuales del proyecto
+        $nombres = $this->first_name ?? $this->names ?? $this->name ?? '';
+        $apellidos = $this->last_name ?? $this->last_names ?? $this->surnames ?? '';
+
+        return trim("{$nombres} {$apellidos}");
+    }
 }
