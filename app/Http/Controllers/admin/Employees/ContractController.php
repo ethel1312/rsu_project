@@ -91,14 +91,62 @@ class ContractController extends Controller
         ];
     }
 
+    private function hasOverlappingTemporaryContract(
+        int $employeeId,
+        Carbon $startDate,
+        Carbon $endDate,
+        ?int $exceptContractId = null
+    ): bool {
+        $query = Contract::where('employee_id', $employeeId)
+            ->where('contract_type', 'Temporal')
+            ->where('start_date', '<=', $endDate->toDateString())
+            ->where(function ($query) use ($startDate) {
+                $query->whereNull('end_date')
+                    ->orWhere('end_date', '>=', $startDate->toDateString());
+            });
+
+        if ($exceptContractId !== null) {
+            $query->where('id', '!=', $exceptContractId);
+        }
+
+        return $query->exists();
+    }
+
     public function create()
     {
-        $employees = Employee::where('status', true)->get()->mapWithKeys(function ($emp) {
-            $name = $emp->full_name ?: ($emp->first_name ?? 'Empleado');
-            return [$emp->id => "{$name} - {$emp->dni}"];
-        });
+        return view('admin.employees.contracts.create', ['employees' => []]);
+    }
 
-        return view('admin.employees.contracts.create', compact('employees'));
+    public function searchEmployees(Request $request)
+    {
+        $data = $request->validate([
+            'q' => 'nullable|string|max:100',
+            'page' => 'nullable|integer|min:1|max:100000',
+        ]);
+        $term = trim($data['q'] ?? '');
+        if (mb_strlen($term) < 2) {
+            return response()->json(['results' => [], 'pagination' => ['more' => false]]);
+        }
+
+        $query = Employee::where('status', true);
+        foreach (preg_split('/\s+/u', $term, -1, PREG_SPLIT_NO_EMPTY) as $word) {
+            $word = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $word);
+            $query->where(function ($query) use ($word) {
+                $query->whereRaw("dni LIKE ? ESCAPE '!'", [$word.'%'])
+                    ->orWhereRaw("first_name LIKE ? ESCAPE '!'", ['%'.$word.'%'])
+                    ->orWhereRaw("last_name LIKE ? ESCAPE '!'", ['%'.$word.'%']);
+            });
+        }
+
+        $employees = $query->orderBy('last_name')->orderBy('first_name')->orderBy('id')
+            ->simplePaginate(20, ['id', 'dni', 'first_name', 'last_name'], 'page', $data['page'] ?? 1);
+
+        return response()->json([
+            'results' => $employees->getCollection()->map(fn ($employee) => [
+                'id' => $employee->id, 'text' => $this->employeeLabel($employee),
+            ])->values(),
+            'pagination' => ['more' => $employees->hasMorePages()],
+        ]);
     }
 
     public function store(Request $request)
@@ -133,8 +181,8 @@ class ContractController extends Controller
             }
         }
 
-        // Regla 2: No 2 activos a la vez
-        if ($isActive && Contract::where('employee_id', $employeeId)->where('is_active', true)->exists()) {
+        // Los temporales pueden estar activos a la vez si sus períodos no se cruzan.
+        if ($isActive && $type !== 'Temporal' && Contract::where('employee_id', $employeeId)->where('is_active', true)->exists()) {
             return response()->json([
                 'error' => 'El empleado ya tiene un contrato activo actualmente.'
             ], 422);
@@ -142,22 +190,13 @@ class ContractController extends Controller
 
         // Regla 3: No solapamiento en temporales
         if ($type === 'Temporal') {
-            $overlap = Contract::where('employee_id', $employeeId)
-                ->where(function ($q) use ($startDate, $endDate) {
-                    $q->whereBetween('start_date', [$startDate, $endDate])
-                      ->orWhereBetween('end_date', [$startDate, $endDate])
-                      ->orWhere(function ($sub) use ($startDate, $endDate) {
-                          $sub->where('start_date', '<=', $startDate)->where('end_date', '>=', $endDate);
-                      });
-                })->exists();
-
-            if ($overlap) {
+            if ($this->hasOverlappingTemporaryContract($employeeId, $startDate, $endDate)) {
                 return response()->json([
                     'error' => 'Las fechas seleccionadas se cruzan con un contrato previo de este empleado.'
                 ], 422);
             }
 
-            // Regla 4: No consecutivo inmediato al día siguiente
+            // Regla 4: Deben pasar al menos dos meses entre contratos temporales.
             $lastContract = Contract::where('employee_id', $employeeId)
                 ->where('contract_type', 'Temporal')
                 ->whereNotNull('end_date')
@@ -165,9 +204,9 @@ class ContractController extends Controller
                 ->orderBy('end_date', 'desc')
                 ->first();
 
-            if ($lastContract && $lastContract->end_date->diffInDays($startDate) <= 1) {
+            if ($lastContract && $startDate->lt($lastContract->end_date->copy()->addMonthsNoOverflow(2))) {
                 return response()->json([
-                    'error' => 'Para evitar estabilidad laboral, debe existir un período de corte previo.'
+                    'error' => 'Deben pasar al menos 2 meses desde el fin del contrato anterior para iniciar uno nuevo.'
                 ], 422);
             }
         }
@@ -187,12 +226,15 @@ class ContractController extends Controller
 
     public function edit(Contract $contract)
     {
-        $employees = Employee::where('status', true)->get()->mapWithKeys(function ($emp) {
-            $name = $emp->full_name ?: ($emp->first_name ?? 'Empleado');
-            return [$emp->id => "{$name} - {$emp->dni}"];
-        });
+        $employee = $contract->employee()->first(['id', 'dni', 'first_name', 'last_name']);
+        $employees = $employee ? [$employee->id => $this->employeeLabel($employee)] : [];
 
         return view('admin.employees.contracts.edit', compact('contract', 'employees'));
+    }
+
+    private function employeeLabel(Employee $employee): string
+    {
+        return $employee->dni.' - '.$employee->last_name.', '.$employee->first_name;
     }
 
     public function update(Request $request, Contract $contract)
@@ -239,8 +281,8 @@ class ContractController extends Controller
             }
         }
 
-        // 2. REGLA: No 2 contratos activos a la vez
-        if ($isActive) {
+        // Los temporales pueden estar activos a la vez si sus períodos no se cruzan.
+        if ($isActive && $type !== 'Temporal') {
             $otherActiveExists = Contract::where('employee_id', $employeeId)
                 ->where('id', '!=', $contract->id)
                 ->where('is_active', true)
@@ -256,24 +298,13 @@ class ContractController extends Controller
         // Reglas para contratos Temporales
         if ($type === 'Temporal') {
             // 3. REGLA: No solapamiento de fechas con otros contratos del mismo empleado
-            $overlap = Contract::where('employee_id', $employeeId)
-                ->where('id', '!=', $contract->id)
-                ->where(function ($q) use ($startDate, $endDate) {
-                    $q->whereBetween('start_date', [$startDate, $endDate])
-                    ->orWhereBetween('end_date', [$startDate, $endDate])
-                    ->orWhere(function ($sub) use ($startDate, $endDate) {
-                        $sub->where('start_date', '<=', $startDate)
-                            ->where('end_date', '>=', $endDate);
-                    });
-                })->exists();
-
-            if ($overlap) {
+            if ($this->hasOverlappingTemporaryContract($employeeId, $startDate, $endDate, $contract->id)) {
                 return response()->json([
                     'error' => 'Las fechas seleccionadas se cruzan con otro contrato registrado de este empleado.'
                 ], 422);
             }
 
-            // 4. REGLA: Margen de corte (evitar que comience inmediatamente al día siguiente de uno previo)
+            // 4. REGLA: Deben pasar al menos dos meses entre contratos temporales.
             $previousContract = Contract::where('employee_id', $employeeId)
                 ->where('id', '!=', $contract->id)
                 ->where('contract_type', 'Temporal')
@@ -282,13 +313,13 @@ class ContractController extends Controller
                 ->orderBy('end_date', 'desc')
                 ->first();
 
-            if ($previousContract && $previousContract->end_date->diffInDays($startDate) <= 1) {
+            if ($previousContract && $startDate->lt($previousContract->end_date->copy()->addMonthsNoOverflow(2))) {
                 return response()->json([
-                    'error' => 'No se puede iniciar un nuevo contrato temporal al día siguiente del contrato anterior. Debe existir un período de corte.'
+                    'error' => 'Deben pasar al menos 2 meses desde el fin del contrato anterior para iniciar uno nuevo.'
                 ], 422);
             }
 
-            // 5. REGLA: Margen de corte con contrato posterior (si editas la fecha fin)
+            // 5. REGLA: Deben pasar al menos dos meses antes del siguiente contrato.
             $nextContract = Contract::where('employee_id', $employeeId)
                 ->where('id', '!=', $contract->id)
                 ->where('contract_type', 'Temporal')
@@ -296,9 +327,9 @@ class ContractController extends Controller
                 ->orderBy('start_date', 'asc')
                 ->first();
 
-            if ($nextContract && $endDate->diffInDays($nextContract->start_date) <= 1) {
+            if ($nextContract && $endDate->copy()->addMonthsNoOverflow(2)->gt($nextContract->start_date)) {
                 return response()->json([
-                    'error' => 'La fecha de fin deja este contrato pegado al día siguiente del próximo contrato registrado.'
+                    'error' => 'Deben pasar al menos 2 meses entre el fin de este contrato y el inicio del siguiente.'
                 ], 422);
             }
         }

@@ -90,13 +90,27 @@ class AttendanceController extends Controller
 
         return view('admin.employees.attendances.edit', [
             'attendance' => $attendance,
+            'employee' => $employee,
             'employees' => $employee ? [$employee->id => $this->employeeLabel($employee)] : [],
         ]);
     }
 
     public function update(Request $request, Attendance $attendance)
     {
-        $this->attendances->save($this->validated($request), $attendance);
+        $data = $request->validate([
+            'time' => ['required', 'regex:/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/'],
+            'notes' => 'nullable|string|max:1000',
+        ], [
+            'time.required' => 'La hora es obligatoria.',
+            'time.regex' => 'Ingrese una hora válida.',
+            'notes.string' => 'Las notas deben ser un texto.',
+            'notes.max' => 'Las notas no deben superar los 1000 caracteres.',
+        ]);
+        if (strlen($data['time']) === 5) {
+            $data['time'] .= ':00';
+        }
+
+        $this->attendances->save($data, $attendance);
 
         return response()->json(['message' => 'Asistencia actualizada exitosamente.']);
     }
@@ -132,7 +146,7 @@ class AttendanceController extends Controller
             return response()->json(['results' => [], 'pagination' => ['more' => false]]);
         }
 
-        $query = Employee::query();
+        $query = Employee::where('status', true);
         // Cada palabra puede coincidir con DNI, nombres o apellidos, en cualquier orden.
         foreach (preg_split('/\s+/u', $term, -1, PREG_SPLIT_NO_EMPTY) as $word) {
             $word = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $word);

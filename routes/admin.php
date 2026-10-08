@@ -38,6 +38,7 @@ Route::delete('vehicles/images/{image_id}', [VehicleController::class, 'deleteIm
 
 //contratoss
 // Contratos
+Route::get('contracts/employees', [ContractController::class, 'searchEmployees'])->name('admin.contracts.employees');
 Route::resource('contracts', ContractController::class)->names('admin.contracts');
 Route::patch('contracts/{contract}/toggle-status', [ContractController::class, 'toggleStatus'])->name('admin.contracts.toggle-status');
 

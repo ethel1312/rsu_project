@@ -13,7 +13,8 @@ class AttendanceService
     {
         return DB::transaction(function () use ($data, $attendance) {
             // Bloquear el personal también protege la primera marcación del día.
-            $ids = array_unique(array_filter([$data['employee_id'], $attendance?->employee_id]));
+            $employeeId = $data['employee_id'] ?? $attendance?->employee_id;
+            $ids = array_unique(array_filter([$employeeId, $attendance?->employee_id]));
             Employee::whereIn('id', $ids)->orderBy('id')->lockForUpdate()->get();
 
             $previous = null;
@@ -25,6 +26,11 @@ class AttendanceService
                     ]);
                 }
                 $attendance = $current;
+                $data = array_merge([
+                    'employee_id' => $current->employee_id,
+                    'date' => $current->date->format('Y-m-d'),
+                    'status' => $current->status,
+                ], $data);
                 $previous = [$attendance->employee_id, $attendance->date->format('Y-m-d')];
             }
 

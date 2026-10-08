@@ -2,6 +2,8 @@
 
 @section('title', 'Contratos')
 
+@section('plugins.Select2', true)
+
 @section('content_header')
     <div class="rsu-title-bar">
         <h1 class="rsu-title">
@@ -62,6 +64,18 @@
             padding: 8px 22px;
         }
         .btn-modal-guardar:hover { background-color: #0284c7 !important; }
+
+        #formModal .select2-container { width: 100% !important; }
+        #formModal .select2-selection--single { min-height: 38px; border-radius: .375rem; }
+        #formModal .select2-container--focus .select2-selection--single,
+        #formModal .select2-container--open .select2-selection--single,
+        #formModal .select2-search__field:focus {
+            border-color: var(--rsu-sky);
+            box-shadow: 0 0 0 .2rem rgba(91, 184, 245, .25);
+        }
+        #formModal .select2-results__option--highlighted.select2-results__option--selectable {
+            background-color: var(--rsu-navy);
+        }
         
     </style>
 @stop
@@ -126,14 +140,58 @@
             }
         });
 
+        function initializeEmployeeSearch() {
+            $('#employee_id').select2({
+                dropdownParent: $('#formModal'),
+                width: '100%',
+                placeholder: 'Buscar por DNI, nombres o apellidos',
+                allowClear: true,
+                minimumInputLength: 2,
+                maximumInputLength: 100,
+                language: {
+                    inputTooShort: function () { return 'Escriba al menos 2 caracteres para buscar.'; },
+                    inputTooLong: function () { return 'La búsqueda no debe superar los 100 caracteres.'; },
+                    searching: function () { return 'Buscando personal...'; },
+                    noResults: function () { return 'No se encontró personal con esos datos.'; },
+                    loadingMore: function () { return 'Cargando más resultados...'; },
+                    errorLoading: function () { return 'No se pudo buscar personal. Intente nuevamente o recargue la página.'; },
+                    removeAllItems: function () { return 'Quitar selección'; }
+                },
+                ajax: {
+                    url: @json(route('admin.contracts.employees')),
+                    dataType: 'json',
+                    delay: 300,
+                    data: function (params) { return {q: (params.term || '').trim(), page: params.page || 1}; }
+                }
+            }).on('select2:open', function () {
+                $('#formModal .select2-search__field')
+                    .attr('aria-label', 'Buscar personal por DNI, nombres o apellidos')
+                    .attr('placeholder', 'DNI, nombres o apellidos')
+                    .trigger('focus');
+            });
+        }
+
+        function destroyEmployeeSearch() {
+            if ($('#employee_id').hasClass('select2-hidden-accessible')) {
+                $('#employee_id').select2('destroy');
+            }
+        }
+
+        $('#formModal').on('hidden.bs.modal', function () {
+            destroyEmployeeSearch();
+            $('#formModal .modal-body').empty();
+        });
+
         // nuevesito
         $('#btnNuevo').click(function() {
             $.ajax({
                 url: "{{ route('admin.contracts.create') }}",
                 type: "GET",
                 success: function(response) {
+                    destroyEmployeeSearch();
                     $('#formModalLabel').html('Nuevo Contrato');
                     $('#formModal .modal-body').html(response);
+                    initializeEmployeeSearch();
                     bootstrap.Modal.getOrCreateInstance(document.getElementById('formModal')).show();
                 },
                 error: function(xhr) {
@@ -149,8 +207,10 @@
                 url: "{{ route('admin.contracts.edit', ':id') }}".replace(':id', id),
                 type: "GET",
                 success: function(response) {
+                    destroyEmployeeSearch();
                     $('#formModalLabel').html('Editar Contrato');
                     $('#formModal .modal-body').html(response);
+                    initializeEmployeeSearch();
                     bootstrap.Modal.getOrCreateInstance(document.getElementById('formModal')).show();
                 },
                 error: function(xhr) {

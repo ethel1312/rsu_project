@@ -102,7 +102,9 @@
                     <div class="row mb-4">
                         <div class="col-sm-6 mb-3">
                             <div class="rsu-item">
-                                <span class="rsu-tile"><i class="bi bi-people"></i></span> Gestión de Personal
+                                <a href="{{ route('admin.employees.index') }}" class="rsu-item">
+                                    <span class="rsu-tile"><i class="bi bi-people"></i></span> Gestión de Personal
+                                </a>
                             </div>
                         </div>
                         <div class="col-sm-6 mb-3">

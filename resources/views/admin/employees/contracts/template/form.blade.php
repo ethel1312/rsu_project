@@ -4,9 +4,10 @@
         {!! Form::label('employee_id', 'Personal *') !!}
         {!! Form::select('employee_id', $employees, null, [
             'class' => 'form-select',
-            'placeholder' => 'Seleccione un empleado',
+            'placeholder' => 'Buscar por DNI, nombres o apellidos',
             'required',
-            'id' => 'employee_id'
+            'id' => 'employee_id',
+            'aria-required' => 'true'
         ]) !!}
         <small class="text-muted">Personal activo disponible para contratación.</small>
     </div>

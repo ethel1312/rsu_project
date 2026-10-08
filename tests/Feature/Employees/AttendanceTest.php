@@ -82,7 +82,13 @@ class AttendanceTest extends TestCase
             ->assertSee('id="startDate" class="form-control" value="2026-10-06"', false)
             ->assertSee('id="endDate" class="form-control" value="2026-10-06"', false);
         $this->get(route('admin.attendances.create'))->assertOk()->assertSee('21:30:00')->assertDontSee('01234567');
-        $this->get(route('admin.attendances.edit', $today))->assertOk()->assertSee('Actualizar Asistencia')->assertSee('01234567');
+        $this->get(route('admin.attendances.edit', $today))->assertOk()
+            ->assertSee('Actualizar Asistencia')->assertSee('01234567')
+            ->assertSee('id="employee_display"', false)
+            ->assertSee('name="time"', false)
+            ->assertSee('name="notes"', false)
+            ->assertDontSee('<select', false)
+            ->assertDontSee('type="date"', false);
         $this->getJson(route('admin.attendances.index', ['start_date' => '2026-10-06', 'end_date' => '2026-10-06']), ['X-Requested-With' => 'XMLHttpRequest'])
             ->assertOk()->assertJsonPath('recordsTotal', 1)->assertJsonPath('data.0.id', $today->id);
         foreach (['2026-10-05', '2026-10-07'] as $date) {
@@ -134,16 +140,16 @@ class AttendanceTest extends TestCase
         $this->assertSame('entry', $second->refresh()->type);
         $this->assertSame('exit', $third->refresh()->type);
         $this->assertSame('entry', $first->refresh()->type);
-        $this->putJson(route('admin.attendances.update', $second), $this->data('12:00', ['status' => 'absent']))->assertOk();
-        $this->assertNull($second->refresh()->type);
-        $this->assertSame('entry', $third->refresh()->type);
-        $this->assertSame('exit', $first->refresh()->type);
+        $absence = $this->createAttendance('10:00', ['status' => 'absent']);
+        $this->assertNull($absence->refresh()->type);
+        $this->assertSame('entry', $second->refresh()->type);
+        $this->assertSame('exit', $third->refresh()->type);
         $this->deleteJson(route('admin.attendances.destroy', $third))->assertOk();
-        $this->assertSame('entry', $first->refresh()->type);
+        $this->assertSame('exit', $first->refresh()->type);
         $this->assertDatabaseMissing('attendances', ['id' => $third->id]);
     }
 
-    public function test_moving_a_record_to_another_person_and_date_repairs_both_groups(): void
+    public function test_editing_cannot_move_a_record_to_another_person_or_date(): void
     {
         $this->admin();
         $first = $this->createAttendance();
@@ -154,8 +160,32 @@ class AttendanceTest extends TestCase
         $this->putJson(route('admin.attendances.update', $first), $this->data('08:00', [
             'employee_id' => $other->id, 'date' => '2026-10-07',
         ]))->assertOk();
-        $this->assertSame('entry', $second->refresh()->type);
-        $this->assertSame('exit', $destination->refresh()->type);
+        $this->assertSame($this->employee->id, $first->refresh()->employee_id);
+        $this->assertSame('2026-10-06', $first->date->format('Y-m-d'));
+        $this->assertSame('exit', $second->refresh()->type);
+        $this->assertSame('entry', $destination->refresh()->type);
+    }
+
+    public function test_editing_attendance_only_changes_time_and_notes(): void
+    {
+        $other = $this->employee->replicate();
+        $other->fill(['dni' => '87654321', 'first_name' => 'Luis', 'last_name' => 'Otro', 'email' => 'otro@example.test'])->save();
+        $attendance = $this->createAttendance('08:00', ['notes' => 'Nota original']);
+
+        $this->putJson(route('admin.attendances.update', $attendance), [
+            'employee_id' => $other->id,
+            'date' => '2026-10-07',
+            'status' => 'absent',
+            'time' => '09:30',
+            'notes' => 'Nota corregida',
+        ])->assertOk();
+
+        $attendance->refresh();
+        $this->assertSame($this->employee->id, $attendance->employee_id);
+        $this->assertSame('2026-10-06', $attendance->date->format('Y-m-d'));
+        $this->assertSame('present', $attendance->status);
+        $this->assertSame('09:30:00', $attendance->time);
+        $this->assertSame('Nota corregida', $attendance->notes);
     }
 
     public function test_duplicate_creation_and_updates_are_rejected_without_changing_records(): void
@@ -283,6 +313,31 @@ class AttendanceTest extends TestCase
         }
         $this->getJson(route('admin.attendances.employees', ['q' => str_repeat('a', 101), 'page' => -1]))
             ->assertUnprocessable()->assertJsonValidationErrors(['q', 'page']);
+    }
+
+    public function test_personal_search_only_returns_active_employees(): void
+    {
+        $this->admin();
+        Employee::create([
+            'dni' => '87654321',
+            'first_name' => 'Ana',
+            'last_name' => 'Inactiva',
+            'birth_date' => '1990-01-01',
+            'email' => 'ana.inactiva@example.test',
+            'status' => false,
+            'password' => Hash::make('secreto123'),
+            'address' => 'Chiclayo',
+            'employee_type_id' => $this->employee->employee_type_id,
+        ]);
+
+        $this->getJson(route('admin.attendances.employees', ['q' => 'Ana']))->assertOk()->assertExactJson([
+            'results' => [['id' => $this->employee->id, 'text' => '01234567 - Pérez, Ana']],
+            'pagination' => ['more' => false],
+        ]);
+        $this->getJson(route('admin.attendances.employees', ['q' => 'Inactiva']))->assertOk()->assertExactJson([
+            'results' => [],
+            'pagination' => ['more' => false],
+        ]);
     }
 
     public function test_personal_search_paginates_and_edit_only_preloads_the_selected_person(): void
