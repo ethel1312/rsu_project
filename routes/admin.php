@@ -12,6 +12,7 @@ use App\Http\Controllers\admin\Employees\EmployeeController;
 use App\Http\Controllers\admin\Employees\ContractController;
 use App\Http\Controllers\admin\Employees\VacationController;
 use App\Http\Controllers\admin\Employees\AttendanceController;
+use App\Http\Controllers\admin\Programming\ZoneController;
 
 use Illuminate\Support\Facades\Route;
 
@@ -61,3 +62,6 @@ Route::middleware('auth')->group(function () {
     Route::get('attendances/preview', [AttendanceController::class, 'preview'])->name('admin.attendances.preview');
     Route::resource('attendances', AttendanceController::class)->except(['show'])->names('admin.attendances');
 });
+
+// ZONAAS
+Route::resource('zones', ZoneController::class)->names('admin.programming.zones');

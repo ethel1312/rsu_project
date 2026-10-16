@@ -863,7 +863,13 @@ return [
         [
             'text' => 'Programación',
             'icon' => 'bi bi-calendar3',
-            'url' => '#',
+            'submenu' => [
+                [
+                    'text'  => 'Zonas',
+                    'route' => 'admin.programming.zones.index',
+                    'icon'  => 'bi bi-geo-alt',
+                ]
+            ],
         ],
         [
             'text' => 'Gestión de Cambios',
