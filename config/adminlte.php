@@ -865,6 +865,11 @@ return [
             'icon' => 'bi bi-calendar3',
             'submenu' => [
                 [
+                    'text' => 'Turnos',
+                    'route' => 'admin.programming.shifts.index',
+                    'icon' => 'bi bi-clock',
+                ],
+                [
                     'text'  => 'Zonas',
                     'route' => 'admin.programming.zones.index',
                     'icon'  => 'bi bi-geo-alt',
