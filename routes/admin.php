@@ -13,6 +13,7 @@ use App\Http\Controllers\admin\Employees\ContractController;
 use App\Http\Controllers\admin\Employees\VacationController;
 use App\Http\Controllers\admin\Employees\AttendanceController;
 use App\Http\Controllers\admin\Programming\ZoneController;
+use App\Http\Controllers\admin\Programming\ShiftController;
 
 use Illuminate\Support\Facades\Route;
 
@@ -65,3 +66,9 @@ Route::middleware('auth')->group(function () {
 
 // ZONAAS
 Route::resource('zones', ZoneController::class)->names('admin.programming.zones');
+
+//Turnos
+Route::resource('shifts', ShiftController::class)
+    ->except(['show'])
+    ->middleware('auth')
+    ->names('admin.programming.shifts');
