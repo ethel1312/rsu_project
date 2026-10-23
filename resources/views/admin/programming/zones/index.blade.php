@@ -11,9 +11,14 @@
             Lista de Zonas
         </h1>
 
-        <button type="button" id="btnNuevo" class="btn rsu-btn-new">
-            <i class="bi bi-plus-circle"></i> Nueva Zona
-        </button>
+        <div class="d-flex flex-wrap" style="gap: 8px;">
+            <a href="{{ route('admin.programming.zones.map') }}" class="btn btn-outline-primary">
+                <i class="bi bi-map"></i> Ver mapa de zonas
+            </a>
+            <button type="button" id="btnNuevo" class="btn rsu-btn-new">
+                <i class="bi bi-plus-circle"></i> Nueva Zona
+            </button>
+        </div>
     </div>
 @stop
 

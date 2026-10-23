@@ -5,6 +5,8 @@ namespace App\Http\Controllers\admin\Programming;
 use App\Http\Controllers\Controller;
 use App\Models\Programming\Shift;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Yajra\DataTables\Facades\DataTables;
 
@@ -51,6 +53,10 @@ class ShiftController extends Controller
 
     public function destroy(Shift $shift)
     {
+        if (Schema::hasTable('personnel_groups') && DB::table('personnel_groups')->where('shift_id', $shift->id)->exists()) {
+            return response()->json(['message' => 'No se puede eliminar este turno porque está configurado en un grupo de personal. Cambie el turno del grupo primero.'], 409);
+        }
+
         $shift->delete();
 
         return response()->json(['message' => 'Turno eliminado correctamente.']);

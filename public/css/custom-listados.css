@@ -13,6 +13,21 @@
     --rsu-ink: #3d4455;
 }
 
+html[data-bs-theme="dark"] .rsu-title {
+    color: #b9d7ff;
+}
+
+html[data-bs-theme="dark"] .rsu-title-ico {
+    color: #c9e4ff;
+    background: #253650;
+}
+
+@media (max-width: 767px) {
+    .rsu-title-bar {
+        flex-wrap: wrap;
+    }
+}
+
 /* ---------- Título fuera de la tabla ---------- */
 .rsu-title-bar {
     display: flex;
