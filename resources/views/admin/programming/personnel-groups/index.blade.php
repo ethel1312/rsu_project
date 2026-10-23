@@ -12,13 +12,40 @@
 
 @section('css')
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="{{ asset('vendor/adminlte/dist/css/adminlte-select2.min.css') }}">
     <link rel="stylesheet" href="{{ asset('css/custom-listados.css') }}">
     <link rel="stylesheet" href="{{ asset('css/custom.css') }}">
     <style>
         .btn-modal-cancelar { background: #edf2f7; color: #2b549a; border-radius: 8px; padding: 8px 18px; }
         .btn-modal-guardar { background: #38bdf8; color: #fff; border-radius: 8px; padding: 8px 22px; }
-        #formModal .select2-container { width: 100% !important; }
-        #formModal .select2-selection { min-height: 38px; }
+        #formModal .modal-title,
+        #frmPersonnelGroup label { color: var(--bs-body-color); }
+        #frmPersonnelGroup .select2-container { width: 100% !important; }
+        #formModal .select2-selection { min-height: 38px; font: inherit; }
+        #formModal .select2-selection--multiple { align-items: center; gap: .375rem; }
+        #formModal .select2-search--inline { flex: 1 1 12rem; min-width: 0; }
+        #formModal .select2-search--inline .select2-search__field {
+            width: 100% !important;
+            min-height: 1.5rem;
+            margin: 0;
+            font: inherit;
+            color: var(--bs-body-color);
+        }
+        #formModal .select2-selection__choice { max-width: 100%; }
+        #formModal .select2-selection__choice__display { white-space: normal; overflow-wrap: anywhere; }
+        #formModal .select2-search--dropdown .select2-search__field {
+            padding: .5rem .75rem;
+            font: inherit;
+            color: var(--bs-body-color);
+            background: var(--bs-body-bg);
+        }
+        #formModal .select2-dropdown { overflow: hidden; border-radius: .375rem; }
+        #formModal .select2-results__option { padding: .5rem .75rem; overflow-wrap: anywhere; }
+        #formModal .select2-container--focus .select2-selection,
+        #formModal .select2-container--open .select2-selection {
+            border-color: var(--rsu-sky);
+            box-shadow: 0 0 0 .2rem rgba(91, 184, 245, .25);
+        }
         #DataTable td { vertical-align: middle; }
     </style>
 @stop
@@ -74,7 +101,51 @@
                 order: [[8, 'desc']],
                 language: { url: 'https://cdn.datatables.net/plug-ins/1.10.16/i18n/Spanish.json' }
             });
-            const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('formModal'));
+            const modalElement = document.getElementById('formModal');
+            const modalBody = $('#formModal .modal-body');
+            const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+
+            function destroyPersonnelSearches() {
+                $('#formModal .group-search.select2-hidden-accessible').each(function () {
+                    $(this).off('.personnelSearch').select2('destroy');
+                });
+            }
+
+            $(modalElement).on('shown.bs.modal', function () {
+                $('#formModal .group-search').each(function () {
+                    const select = $(this);
+                    const multiple = select.prop('multiple');
+                    select.select2({
+                        // El cuerpo se desplaza junto al campo; el modal exterior es el contenedor con scroll.
+                        dropdownParent: modalBody,
+                        width: '100%',
+                        placeholder: multiple ? 'Buscar y seleccionar ayudantes' : 'Buscar conductor',
+                        closeOnSelect: !multiple,
+                        language: {
+                            noResults: () => 'No se encontraron empleados activos de este tipo',
+                            removeItem: () => 'Quitar ayudante'
+                        }
+                    }).on('select2:open.personnelSearch', function () {
+                        const search = multiple
+                            ? select.next('.select2').find('.select2-search__field')
+                            : modalBody.find('.select2-dropdown .select2-search__field');
+                        search.attr('aria-label', multiple ? 'Buscar ayudantes por nombre o DNI' : 'Buscar conductor por nombre o DNI')
+                            .attr('placeholder', 'Nombre, apellido o DNI').trigger('focus');
+                    });
+                    select.next('.select2').find('.select2-selection')
+                        .attr('aria-labelledby', multiple ? 'groupHelpersLabel' : 'groupDriverLabel');
+                    if (multiple) {
+                        select.next('.select2').find('.select2-search__field')
+                            .attr('aria-label', 'Buscar ayudantes por nombre o DNI');
+                    }
+                });
+                updateCapacity();
+            }).on('hide.bs.modal', function () {
+                $('#formModal .group-search.select2-hidden-accessible').select2('close');
+            }).on('hidden.bs.modal', function () {
+                destroyPersonnelSearches();
+                modalBody.empty();
+            });
 
             function updateCapacity() {
                 const capacity = Number($('#group_vehicle_id option:selected').data('capacity'));
@@ -93,16 +164,8 @@
                 button.prop('disabled', true);
                 $.get(url).done(function (html) {
                     $('#formModalLabel').text(title);
-                    $('#formModal .modal-body').html(html);
-                    $('#formModal .group-search').each(function () {
-                        $(this).select2({
-                            dropdownParent: $('#formModal'),
-                            width: '100%',
-                            placeholder: $(this).prop('multiple') ? 'Buscar y seleccionar ayudantes' : 'Buscar conductor',
-                            language: { noResults: () => 'No se encontraron empleados activos de este tipo' }
-                        });
-                    });
-                    updateCapacity();
+                    destroyPersonnelSearches();
+                    modalBody.html(html);
                     modal.show();
                 }).fail(function () {
                     Swal.fire('Error', 'No se pudo cargar el formulario de grupos de personal.', 'error');

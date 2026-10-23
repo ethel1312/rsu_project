@@ -53,7 +53,7 @@
         </fieldset>
     </div>
     <div class="col-md-6 mb-3">
-        <label for="group_driver_id" class="font-weight-bold">Conductor *</label>
+        <label for="group_driver_id" id="groupDriverLabel" class="font-weight-bold">Conductor *</label>
         <select class="form-control group-search" name="driver_id" id="group_driver_id" required>
             <option value="">Busque por nombre, apellido o DNI</option>
             @foreach ($drivers as $driver)
@@ -62,7 +62,7 @@
         </select>
     </div>
     <div class="col-md-6 mb-3">
-        <label for="group_helpers" class="font-weight-bold">Ayudantes *</label>
+        <label for="group_helpers" id="groupHelpersLabel" class="font-weight-bold">Ayudantes *</label>
         <select class="form-control group-search" name="helpers[]" id="group_helpers" multiple required>
             @foreach ($helpers as $helper)
                 <option value="{{ $helper->id }}" @selected(in_array($helper->id, $selectedHelpers))>{{ $helper->full_name }} · DNI {{ $helper->dni }}{{ ! $helper->status || $helper->employeeType?->name !== 'Ayudante' ? ' (no disponible: reemplazar)' : '' }}</option>
