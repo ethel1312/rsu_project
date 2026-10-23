@@ -9,6 +9,9 @@ use App\Models\Employees\Vacation;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Yajra\DataTables\Facades\DataTables;
+use App\Models\Employees\VacationBalance;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 
 class VacationController extends Controller
@@ -42,9 +45,26 @@ class VacationController extends Controller
             })
             
             ->addColumn('days_remaining', function ($vacation) {
-                return '<span class="vac-days vac-days-remaining">-</span>';
-            })
 
+                $year = Carbon::parse($vacation->start_date)->year;
+
+                $balance = VacationBalance::where(
+                    'employee_id',
+                    $vacation->employee_id
+                )
+                ->where('year', $year)
+                ->first();
+
+                if (!$balance) {
+                    return '<span class="vac-days">Sin saldo</span>';
+                }
+
+                $available = $balance->days_entitled - $balance->days_taken;
+
+                return '<span class="vac-days vac-days-remaining">'
+                    . $available .
+                    '</span>';
+            })
             
             ->editColumn('days_requested', function ($vacation) {
                 return '<span class="vac-days">' .
@@ -144,40 +164,184 @@ class VacationController extends Controller
         return view('admin.employees.vacations.index');
     }
 
+    public function approve(string $id)
+    {
+        try {
+            DB::transaction(function () use ($id) {
+                $vacation = Vacation::whereKey($id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if ($vacation->status !== 'Pendiente') {
+                    abort(409, 'La solicitud ya fue procesada.');
+                }
+
+                $year = Carbon::parse($vacation->start_date)->year;
+
+                $balance = VacationBalance::where('employee_id', $vacation->employee_id)
+                    ->where('year', $year)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$balance) {
+                    abort(422, 'El trabajador no tiene un saldo de vacaciones registrado para ese año.');
+                }
+
+                $available = $balance->days_entitled - $balance->days_taken;
+
+                if ($vacation->days_requested > $available) {
+                    abort(422, 'El trabajador no tiene suficientes días disponibles.');
+                }
+
+                $balance->increment('days_taken', $vacation->days_requested);
+
+                $vacation->update([
+                    'status' => 'Aprobada',
+                ]);
+            });
+
+            return response()->json([
+                'message' => 'Solicitud aprobada y saldo actualizado correctamente.',
+            ]);
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'error' => 'No se pudo aprobar la solicitud.',
+            ], 500);
+        }
+    }
+
+    public function reject(string $id)
+    {
+        $vacation = Vacation::findOrFail($id);
+
+        if ($vacation->status !== 'Pendiente') {
+            return response()->json([
+                'error' => 'Solo se pueden rechazar solicitudes pendientes.',
+            ], 409);
+        }
+
+        $vacation->update([
+            'status' => 'Rechazada',
+        ]);
+
+        return response()->json([
+            'message' => 'Solicitud rechazada correctamente.',
+        ]);
+    }
+
     public function create()
     {
         $vacation = new Vacation();
-        $employees = \App\Models\Employees\Employee::orderBy('first_name')
-        ->get()
-        ->mapWithKeys(function ($employee) {
-            return [
-                $employee->id => $employee->first_name . ' ' . $employee->last_name
-                    . ' - ' . $employee->dni
-            ];
-        });
+        $employees = [];
 
         return view('admin.employees.vacations.create', compact('vacation', 'employees'));
+    }
+
+    public function balanceSummary(Request $request, string $employeeId)
+    {
+        $data = $request->validate([
+            'year' => 'required|integer|min:1900|max:2200',
+        ]);
+
+        $employee = Employee::whereKey($employeeId)
+            ->where('status', true)
+            ->whereHas('contracts', function ($query) {
+                $query->whereIn('contract_type', ['Permanente', 'Nombrado'])
+                    ->where('is_active', true);
+            })
+            ->firstOrFail();
+
+        $balance = VacationBalance::where('employee_id', $employee->id)
+            ->where('year', $data['year'])
+            ->first();
+
+        return response()->json([
+            'year' => (int) $data['year'],
+            'has_balance' => $balance !== null,
+            'days_entitled' => (int) ($balance?->days_entitled ?? 0),
+            'days_taken' => (int) ($balance?->days_taken ?? 0),
+            'days_available' => (int) ($balance?->days_available ?? 0),
+        ]);
+    }
+
+    public function searchEmployees(Request $request)
+    {
+        $data = $request->validate([
+            'q' => 'nullable|string|max:100',
+            'page' => 'nullable|integer|min:1|max:100000',
+        ]);
+        $term = trim($data['q'] ?? '');
+
+        if (mb_strlen($term) < 2) {
+            return response()->json([
+                'results' => [],
+                'pagination' => ['more' => false],
+            ]);
+        }
+
+        $query = Employee::query()
+            ->where('status', true)
+            ->whereHas('contracts', function ($query) {
+                $query->whereIn('contract_type', ['Permanente', 'Nombrado'])
+                    ->where('is_active', true);
+            });
+
+        foreach (preg_split('/\s+/u', $term, -1, PREG_SPLIT_NO_EMPTY) as $word) {
+            $word = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $word);
+            $query->where(function ($query) use ($word) {
+                $query->whereRaw("dni LIKE ? ESCAPE '!'", [$word . '%'])
+                    ->orWhereRaw("first_name LIKE ? ESCAPE '!'", ['%' . $word . '%'])
+                    ->orWhereRaw("last_name LIKE ? ESCAPE '!'", ['%' . $word . '%']);
+            });
+        }
+
+        $employees = $query->orderBy('last_name')
+            ->orderBy('first_name')
+            ->orderBy('id')
+            ->simplePaginate(20, ['id', 'dni', 'first_name', 'last_name'], 'page', $data['page'] ?? 1);
+
+        return response()->json([
+            'results' => $employees->getCollection()->map(function ($employee) {
+                return [
+                    'id' => $employee->id,
+                    'text' => $employee->first_name . ' '
+                        . $employee->last_name . ' - '
+                        . $employee->dni,
+                ];
+            })->values(),
+            'pagination' => ['more' => $employees->hasMorePages()],
+        ]);
     }
 
 
     public function store(Request $request)
     {
-        $data = $this->validatedData($request);
+        $conflict = DB::transaction(function () use ($request) {
+            $data = $this->validatedData($request);
 
-        if ($this->hasDateConflict(
-            $data['employee_id'],
-            $data['start_date'],
-            $data['end_date']
-        )) {
+            if ($this->hasDateConflict(
+                $data['employee_id'],
+                $data['start_date'],
+                $data['end_date']
+            )) {
+                return true;
+            }
+
+            $data['status'] = 'Pendiente';
+            Vacation::create($data);
+
+            return false;
+        });
+
+        if ($conflict) {
             return response()->json([
                 'error' => 'El empleado ya tiene una solicitud pendiente o aprobada que coincide con esas fechas.'
             ], 409);
         }
-
-        // La solicitud siempre comienza pendiente.
-        $data['status'] = 'Pendiente';
-
-        Vacation::create($data);
 
         return response()->json([
             'message' => 'Solicitud de vacaciones registrada exitosamente.'
@@ -193,14 +357,20 @@ class VacationController extends Controller
             return response('Una solicitud aprobada no puede modificarse.', 409);
         }
 
-        $employees = \App\Models\Employees\Employee::orderBy('first_name')
-            ->get()
-            ->mapWithKeys(function ($employee) {
-                return [
-                    $employee->id => $employee->first_name . ' ' . $employee->last_name
-                        . ' - ' . $employee->dni
-                ];
-            });
+        $employees = \App\Models\Employees\Employee::whereHas('contracts', function ($query) {
+            $query->whereIn('contract_type', ['Permanente', 'Nombrado'])
+                ->where('is_active', true);
+        })
+        ->where('status', true)
+        ->orderBy('first_name')
+        ->get()
+        ->unique('id')
+        ->mapWithKeys(function ($employee) {
+            return [
+                $employee->id => $employee->first_name . ' ' .
+                    $employee->last_name . ' - ' . $employee->dni
+            ];
+        });
 
         return view('admin.employees.vacations.edit', compact('vacation', 'employees'));
     }
@@ -215,20 +385,28 @@ class VacationController extends Controller
             ], 409);
         }
 
-        $data = $this->validatedData($request);
+        $conflict = DB::transaction(function () use ($request, $vacation) {
+            $data = $this->validatedData($request);
 
-        if ($this->hasDateConflict(
-            $data['employee_id'],
-            $data['start_date'],
-            $data['end_date'],
-            $vacation->id
-        )) {
+            if ($this->hasDateConflict(
+                $data['employee_id'],
+                $data['start_date'],
+                $data['end_date'],
+                $vacation->id
+            )) {
+                return true;
+            }
+
+            $vacation->update($data);
+
+            return false;
+        });
+
+        if ($conflict) {
             return response()->json([
                 'error' => 'El empleado ya tiene una solicitud pendiente o aprobada que coincide con esas fechas.'
             ], 409);
         }
-
-        $vacation->update($data);
 
         return response()->json([
             'message' => 'Solicitud de vacaciones actualizada exitosamente.'
@@ -238,18 +416,31 @@ class VacationController extends Controller
 
     public function destroy(string $id)
     {
-        $vacation = Vacation::findOrFail($id);
+        DB::transaction(function () use ($id) {
+            $vacation = Vacation::whereKey($id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        if ($vacation->status === 'Aprobada') {
-            return response()->json([
-                'error' => 'No se puede eliminar una solicitud de vacaciones aprobada.'
-            ], 409);
-        }
+            if ($vacation->status === 'Aprobada') {
+                $year = Carbon::parse($vacation->start_date)->year;
 
-        $vacation->delete();
+                $balance = VacationBalance::where('employee_id', $vacation->employee_id)
+                    ->where('year', $year)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if ($balance->days_taken < $vacation->days_requested) {
+                    abort(409, 'No se puede devolver el saldo porque los días registrados no coinciden.');
+                }
+
+                $balance->decrement('days_taken', $vacation->days_requested);
+            }
+
+            $vacation->delete();
+        });
 
         return response()->json([
-            'message' => 'Solicitud de vacaciones eliminada exitosamente.'
+            'message' => 'Solicitud eliminada correctamente.',
         ]);
     }
 
@@ -275,22 +466,57 @@ class VacationController extends Controller
 
     private function validatedData(Request $request): array
     {
-        return $request->validate([
+
+        $employee = \App\Models\Employees\Employee::whereKey(
+            $request->input('employee_id')
+        )
+        ->where('status', true)
+        ->whereHas('contracts', function ($query) {
+            $query->whereIn('contract_type', ['Permanente', 'Nombrado'])
+                ->where('is_active', true);
+        })
+        ->first();
+
+        if (!$employee) {
+            abort(422, 'Solo el personal activo con contrato Permanente o Nombrado puede solicitar vacaciones.');
+        }
+
+        $data = $request->validate([
             'employee_id' => 'required|exists:employees,id',
+            'start_date' => 'required|date|after_or_equal:today',
             'days_requested' => 'required|integer|min:1',
-            'start_date' => 'required|date',
-            'end_date' => 'required|date|after_or_equal:start_date',
             'notes' => 'nullable|string|max:1000',
         ], [
             'employee_id.required' => 'Debe seleccionar al trabajador.',
             'employee_id.exists' => 'El trabajador seleccionado no existe.',
-            'days_requested.required' => 'Debe indicar los días solicitados.',
-            'days_requested.integer' => 'Los días solicitados deben ser un número entero.',
-            'days_requested.min' => 'Debe solicitar al menos un día.',
             'start_date.required' => 'La fecha de inicio es obligatoria.',
-            'end_date.required' => 'La fecha de fin es obligatoria.',
-            'end_date.after_or_equal' => 'La fecha de fin no puede ser anterior a la fecha de inicio.',
+            'start_date.after_or_equal' => 'La fecha de inicio debe ser hoy o una fecha futura.',
+            'days_requested.required' => 'Debe ingresar la cantidad de días solicitados.',
+            'days_requested.integer' => 'Los días solicitados deben ser un número entero.',
+            'days_requested.min' => 'Debe solicitar al menos un día de vacaciones.',
         ]);
+
+        $balance = VacationBalance::where('employee_id', $employee->id)
+            ->where('year', Carbon::parse($data['start_date'])->year)
+            ->lockForUpdate()
+            ->first();
+        $available = (int) ($balance?->days_available ?? 0);
+
+        if ($data['days_requested'] > $available) {
+            $dayLabel = $available === 1
+                ? 'día de vacaciones disponible.'
+                : 'días de vacaciones disponibles.';
+
+            throw ValidationException::withMessages([
+                'days_requested' => "Solo tienes {$available} {$dayLabel}",
+            ]);
+        }
+
+        $data['end_date'] = Carbon::parse($data['start_date'])
+            ->addDays($data['days_requested'] - 1)
+            ->toDateString();
+
+        return $data;
     }
 
 }

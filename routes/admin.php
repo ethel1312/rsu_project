@@ -56,13 +56,32 @@ Route::resource('employees', EmployeeController::class)->except(['show'])->names
 
 // Route::resource('contracts', ContractController::class)->except(['show'])->names('admin.contracts');
 
-Route::resource('vacations', VacationController::class)->except(['show'])->names('admin.vacations');
-
 Route::middleware('auth')->group(function () {
     Route::get('attendances/employees', [AttendanceController::class, 'searchEmployees'])->name('admin.attendances.employees');
     Route::get('attendances/preview', [AttendanceController::class, 'preview'])->name('admin.attendances.preview');
     Route::resource('attendances', AttendanceController::class)->except(['show'])->names('admin.attendances');
 });
+
+//VACACIONES
+Route::get(
+    'vacations/balance/{employeeId}',
+    [VacationController::class, 'balanceSummary']
+)->name('admin.vacations.balance');
+
+Route::resource('vacations', VacationController::class)
+    ->except(['show'])
+    ->names('admin.vacations');
+
+Route::patch('vacations/{id}/approve', [VacationController::class, 'approve'])
+    ->name('admin.vacations.approve');
+
+Route::patch('vacations/{id}/reject', [VacationController::class, 'reject'])
+    ->name('admin.vacations.reject');
+
+Route::get(
+    'vacations/employees',
+    [VacationController::class, 'searchEmployees']
+)->name('admin.vacations.employees');
 
 // ZONAAS
 Route::resource('zones', ZoneController::class)->names('admin.programming.zones');

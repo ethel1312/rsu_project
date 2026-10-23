@@ -81,25 +81,31 @@ table.dataTable tbody td {
 }
 
 /* ---------- Botones Editar / Eliminar ---------- */
+
 .btnEditar,
 .btnEditar.btn-primary {
-    background: var(--rsu-soft);
-    border-color: var(--rsu-soft);
-    color: var(--rsu-navy);
+    background: #e3edff;
+    border: 1px solid #d1e0ff;
+    color: #1746a2;
+    transition: background-color .2s ease, color .2s ease;
 }
+
 .btnEditar:hover {
-    background: var(--rsu-sky);
-    border-color: var(--rsu-sky);
+    background: #2563eb;
+    border-color: #2563eb;
     color: #fff;
 }
+
 .frmEliminar .btn-danger {
-    background: #fbe6ea;
-    border-color: #fbe6ea;
-    color: #a8445a;
+    background: #ffe5e8;
+    border: 1px solid #ffd1d8;
+    color: #c62843;
+    transition: background-color .2s ease, color .2s ease;
 }
+
 .frmEliminar .btn-danger:hover {
-    background: #a8445a;
-    border-color: #a8445a;
+    background: #dc3545;
+    border-color: #dc3545;
     color: #fff;
 }
 
