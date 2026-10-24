@@ -24,7 +24,7 @@
 
     <div class="col-md-4 mb-3">
         {!! Form::label('district', 'Distrito *', ['class' => 'font-weight-bold']) !!}
-        {!! Form::select('district', ['Jose Leonardo Ortiz' => 'Jose Leonardo Ortiz'], null, [
+        {!! Form::select('district', ['Jose Leonardo Ortiz' => 'José Leonardo Ortiz', 'Chiclayo' => 'Chiclayo', 'La Victoria' => 'La Victoria', 'Pimentel' => 'Pimentel'] + (isset($zone) ? [$zone->district => $zone->district] : []), null, [
             'class' => 'form-select', 'required'
         ]) !!}
     </div>
@@ -68,7 +68,7 @@
     <div class="col-md-12">
         <label class="small text-muted mb-1">Buscar dirección dentro del distrito</label>
         <div class="input-group">
-            <input type="text" id="inputBuscarDireccion" class="form-control" placeholder="Escribe una dirección o institución (ej: Av. Los Próceres, Mercado Moshoqueque)">
+            <input type="text" id="inputBuscarDireccion" class="form-control" placeholder="Escribe una dirección o institución (ej: Mercado Moshoqueque)">
             <button class="btn btn-outline-secondary" type="button" id="btnBuscarDireccion">
                 <i class="bi bi-search"></i> Buscar
             </button>
@@ -97,7 +97,7 @@
 
 <script>
     (function () {
-        const existingZones = {!! json_encode($existingZones ?? []) !!};
+        const existingZones = {{ Illuminate\Support\Js::from($existingZones ?? []) }};
         let currentCoords = [];
         
         try {
@@ -142,7 +142,11 @@
                         fillColor: '#f1aeb5',
                         fillOpacity: 0.35,
                         weight: 2
-                    }).addTo(map).bindPopup('<b>Zona:</b> ' + (z.name || ''));
+                    }).addTo(map).bindPopup(function () {
+                        const popup = document.createElement('span');
+                        popup.textContent = 'Zona: ' + (z.name || '');
+                        return popup;
+                    });
                 }
             });
         }
@@ -316,13 +320,15 @@
             const query = $('#inputBuscarDireccion').val();
             if (!query.trim()) return;
 
-            const fullQuery = query + ', Jose Leonardo Ortiz, Chiclayo, Peru';
+            const fullQuery = [query, $('#district').val(), $('#province').val(), $('#department').val(), 'Perú'].filter(Boolean).join(', ');
             $.getJSON(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullQuery)}`, function (data) {
                 if (data && data.length > 0) {
                     const lat = parseFloat(data[0].lat);
                     const lon = parseFloat(data[0].lon);
                     map.setView([lat, lon], 16);
-                    L.popup().setLatLng([lat, lon]).setContent(`<b>${data[0].display_name}</b>`).openOn(map);
+                    const address = document.createElement('strong');
+                    address.textContent = data[0].display_name;
+                    L.popup().setLatLng([lat, lon]).setContent(address).openOn(map);
                 } else {
                     Swal.fire('No encontrado', 'No se encontró la dirección dentro del distrito.', 'info');
                 }

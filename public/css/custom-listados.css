@@ -13,6 +13,21 @@
     --rsu-ink: #3d4455;
 }
 
+html[data-bs-theme="dark"] .rsu-title {
+    color: #b9d7ff;
+}
+
+html[data-bs-theme="dark"] .rsu-title-ico {
+    color: #c9e4ff;
+    background: #253650;
+}
+
+@media (max-width: 767px) {
+    .rsu-title-bar {
+        flex-wrap: wrap;
+    }
+}
+
 /* ---------- Título fuera de la tabla ---------- */
 .rsu-title-bar {
     display: flex;
@@ -81,25 +96,31 @@ table.dataTable tbody td {
 }
 
 /* ---------- Botones Editar / Eliminar ---------- */
+
 .btnEditar,
 .btnEditar.btn-primary {
-    background: var(--rsu-soft);
-    border-color: var(--rsu-soft);
-    color: var(--rsu-navy);
+    background: #e3edff;
+    border: 1px solid #d1e0ff;
+    color: #1746a2;
+    transition: background-color .2s ease, color .2s ease;
 }
+
 .btnEditar:hover {
-    background: var(--rsu-sky);
-    border-color: var(--rsu-sky);
+    background: #2563eb;
+    border-color: #2563eb;
     color: #fff;
 }
+
 .frmEliminar .btn-danger {
-    background: #fbe6ea;
-    border-color: #fbe6ea;
-    color: #a8445a;
+    background: #ffe5e8;
+    border: 1px solid #ffd1d8;
+    color: #c62843;
+    transition: background-color .2s ease, color .2s ease;
 }
+
 .frmEliminar .btn-danger:hover {
-    background: #a8445a;
-    border-color: #a8445a;
+    background: #dc3545;
+    border-color: #dc3545;
     color: #fff;
 }
 
@@ -166,4 +187,125 @@ table.dataTable tbody td {
 .text-status {
     text-align: center;
     white-space: nowrap;
+}
+
+
+/* ==========================================================
+   VACACIONES: estilos específicos
+   Reutiliza los colores y variables RSU compartidos
+   ========================================================== */
+
+#DataTable .vac-dni {
+    display: inline-block;
+    padding: 5px 9px;
+    background: #fff;
+    border: 1px solid #dfe6f5;
+    border-radius: 5px;
+    color: var(--rsu-ink);
+    white-space: nowrap;
+}
+
+#DataTable .vac-days {
+    display: inline-block;
+    min-width: 32px;
+    padding: 5px 9px;
+    border-radius: 5px;
+    background: #e5f4ff;
+    color: #176b9b;
+    font-weight: 600;
+    text-align: center;
+}
+
+#DataTable .vac-days-remaining {
+    background: var(--rsu-soft);
+    color: var(--rsu-navy);
+}
+
+#DataTable .vac-status {
+    display: inline-block;
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: .78rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+#DataTable .vac-status-pending {
+    background: #fff1c7;
+    color: #856404;
+}
+
+#DataTable .vac-status-approved {
+    background: #d8f3df;
+    color: #176b37;
+}
+
+#DataTable .vac-status-rejected {
+    background: #fbe1e5;
+    color: #a52b43;
+}
+
+/* Acciones */
+#DataTable .vac-actions {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+}
+
+#DataTable .vac-actions .btn {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+}
+
+/* Aprobar: verde */
+#DataTable .vac-actions .btnAprobar {
+    background: #d8f3df;
+    border-color: #d8f3df;
+    color: #176b37;
+}
+
+#DataTable .vac-actions .btnAprobar:hover {
+    background: #198754;
+    border-color: #198754;
+    color: #fff;
+}
+
+/* Rechazar: rojo */
+#DataTable .vac-actions .btnRechazar {
+    background: #fbe1e5;
+    border-color: #fbe1e5;
+    color: #b02a37;
+}
+
+#DataTable .vac-actions .btnRechazar:hover {
+    background: #dc3545;
+    border-color: #dc3545;
+    color: #fff;
+}
+
+/* Editar: reutiliza el estilo RSU */
+#DataTable .vac-actions .btnEditar {
+    background: var(--rsu-soft);
+    border-color: var(--rsu-soft);
+    color: var(--rsu-navy);
+}
+
+/* Eliminar: reutiliza la paleta del sistema */
+#DataTable .vac-actions .frmEliminar .btn-danger {
+    background: #fbe6ea;
+    border-color: #fbe6ea;
+    color: #a8445a;
+}
+
+#DataTable .vac-actions .frmEliminar .btn-danger:hover {
+    background: #a8445a;
+    border-color: #a8445a;
+    color: #fff;
 }

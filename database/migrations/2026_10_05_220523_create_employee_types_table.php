@@ -11,6 +11,15 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('employee_types')) {
+            if (! Schema::hasColumns('employee_types', ['id', 'name', 'description', 'created_at', 'updated_at'])) {
+                throw new RuntimeException('La tabla employee_types importada tiene una estructura incompleta. Revise sus columnas antes de migrar.');
+            }
+
+            // La siguiente migración agrega is_default si el respaldo todavía no la contiene.
+            return;
+        }
+
         Schema::create('employee_types', function (Blueprint $table) {
             $table->id();
             $table->string('name')->unique();

@@ -11,6 +11,17 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('employees')) {
+            if (! Schema::hasColumns('employees', [
+                'id', 'dni', 'first_name', 'last_name', 'birth_date', 'phone', 'email',
+                'status', 'password', 'address', 'image_path', 'employee_type_id', 'created_at', 'updated_at',
+            ])) {
+                throw new RuntimeException('La tabla employees importada tiene una estructura incompleta. Revise sus columnas antes de migrar.');
+            }
+
+            return;
+        }
+
         Schema::create('employees', function (Blueprint $table) {
             $table->id();
 

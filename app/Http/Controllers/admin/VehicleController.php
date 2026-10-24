@@ -224,6 +224,10 @@ class VehicleController extends Controller
     public function destroy(string $id)
     {
         try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('personnel_groups')
+                && \Illuminate\Support\Facades\DB::table('personnel_groups')->where('vehicle_id', $id)->exists()) {
+                return response()->json(['error' => 'No se puede eliminar este vehículo porque está configurado en un grupo de personal. Cambie el vehículo del grupo primero.'], 409);
+            }
             Vehicle::find($id)->delete();
             return response()->json(['message' => 'Vehículo eliminado exitosamente.'], 200);
         } catch (\Exception $th) {

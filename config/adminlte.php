@@ -865,10 +865,25 @@ return [
             'icon' => 'bi bi-calendar3',
             'submenu' => [
                 [
+                    'text' => 'Turnos',
+                    'route' => 'admin.programming.shifts.index',
+                    'icon' => 'bi bi-clock',
+                ],
+                [
                     'text'  => 'Zonas',
                     'route' => 'admin.programming.zones.index',
                     'icon'  => 'bi bi-geo-alt',
-                ]
+                ],
+                [
+                    'text' => 'Feriados',
+                    'route' => 'admin.programming.holidays.index',
+                    'icon' => 'bi bi-calendar-event',
+                ],
+                [
+                    'text' => 'Grupos de personal',
+                    'route' => 'admin.programming.personnel-groups.index',
+                    'icon' => 'bi bi-people',
+                ],
             ],
         ],
         [

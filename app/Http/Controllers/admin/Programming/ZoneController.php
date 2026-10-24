@@ -4,6 +4,8 @@ namespace App\Http\Controllers\admin\Programming;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Yajra\DataTables\Facades\DataTables;
 use App\Models\Programming\Zone;
 
@@ -46,6 +48,56 @@ class ZoneController extends Controller
         }
 
         return view('admin.programming.zones.index');
+    }
+
+    public function map()
+    {
+        $mapZones = Zone::orderBy('name')->get()->map(function (Zone $zone) {
+            $coordinates = $zone->coordinates;
+            $valid = is_array($coordinates) && count($coordinates) >= 3;
+            $points = [];
+
+            if ($valid) {
+                foreach ($coordinates as $coordinate) {
+                    if (!is_array($coordinate)
+                        || !isset($coordinate['lat'], $coordinate['lng'])
+                        || !is_numeric($coordinate['lat'])
+                        || !is_numeric($coordinate['lng'])) {
+                        $valid = false;
+                        break;
+                    }
+
+                    $latitude = (float) $coordinate['lat'];
+                    $longitude = (float) $coordinate['lng'];
+                    if (!is_finite($latitude) || !is_finite($longitude)
+                        || abs($latitude) > 90 || abs($longitude) > 180) {
+                        $valid = false;
+                        break;
+                    }
+
+                    $points[] = [$latitude, $longitude];
+                }
+            }
+
+            if ($valid && count(array_unique(array_map('json_encode', $points))) < 3) {
+                $valid = false;
+            }
+
+            return [
+                'id' => $zone->id,
+                'name' => $zone->name,
+                'district' => $zone->district,
+                'province' => $zone->province,
+                'department' => $zone->department,
+                'description' => $zone->description,
+                'average_waste_kg' => $zone->average_waste_kg,
+                'status' => $zone->status,
+                'coordinates' => $valid ? $points : [],
+                'has_valid_coordinates' => $valid,
+            ];
+        })->values();
+
+        return view('admin.programming.zones.map', compact('mapZones'));
     }
 
     public function create()
@@ -170,6 +222,13 @@ class ZoneController extends Controller
 
     public function destroy(Zone $zone)
     {
+        if (Schema::hasTable('personnel_groups')
+            && DB::table('personnel_groups')->where('zone_id', $zone->id)->exists()) {
+            return response()->json([
+                'error' => 'Esta zona pertenece a un grupo de personal. Cambie la zona del grupo o desactive la zona para conservar sus datos.',
+            ], 422);
+        }
+
         $zone->delete();
         return response()->json(['message' => 'Zona eliminada correctamente.']);
     }
