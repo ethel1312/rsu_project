@@ -29,9 +29,10 @@ class ProgrammingDemoSeeder extends Seeder
             $year = now('America/Lima')->year;
 
             foreach ([
+                ['Madrugada (demo)', '22:00', '06:00'],
                 ['Mañana (demo)', '06:00', '14:00'],
-                ['Tarde (demo)', '14:00', '22:00'],
-                ['Noche (demo)', '22:00', '06:00'],
+                ['Noche (demo)', '18:00', '22:00'],
+                ['Tarde (demo)', '14:00', '18:00'],
             ] as [$name, $start, $end]) {
                 Shift::firstOrCreate(['name' => $name], [
                     'start_time' => $start, 'end_time' => $end,
@@ -64,14 +65,14 @@ class ProgrammingDemoSeeder extends Seeder
             ]);
             $color = Color::firstOrCreate(['name' => 'Blanco'], ['code' => '#FFFFFF']);
 
-            foreach ([1, 2] as $number) {
-                Vehicle::firstOrCreate(['code' => sprintf('DEMO-%03d', $number)], [
+            foreach ([1 => 2, 2 => 4, 3 => 6] as $number => $occupantCapacity) {
+                Vehicle::updateOrCreate(['code' => sprintf('DEMO-%03d', $number)], [
                     'name' => "Compactadora de demostración {$number}",
                     'plate' => 'DEM-10'.$number, 'year' => $year,
                     'type_id' => $type->id, 'brand_id' => $brand->id,
                     'model_id' => $model->id, 'color_id' => $color->id,
                     'load_capacity' => 12000, 'compact_capacity' => 15,
-                    'fuel_capacity' => 200, 'occupant_capacity' => 3,
+                    'fuel_capacity' => 200, 'occupant_capacity' => $occupantCapacity,
                     'description' => 'Vehículo ficticio para probar el avance 04.',
                 ]);
             }
@@ -79,12 +80,19 @@ class ProgrammingDemoSeeder extends Seeder
             $staff = [
                 ['conductor1', 'Carlos Demo', 'Conductor Uno', $driverType, 1],
                 ['conductor2', 'Ana Demo', 'Conductor Dos', $driverType, 2],
-                ['conductor3', 'Luis Demo', 'Conductor Suplente', $driverType, 3],
-                ['ayudante1', 'María Demo', 'Ayudante Uno', $helperType, 4],
-                ['ayudante2', 'José Demo', 'Ayudante Dos', $helperType, 5],
-                ['ayudante3', 'Rosa Demo', 'Ayudante Tres', $helperType, 6],
-                ['ayudante4', 'Pedro Demo', 'Ayudante Cuatro', $helperType, 7],
-                ['ayudante5', 'Elena Demo', 'Ayudante Suplente', $helperType, 8],
+                ['conductor3', 'Luis Demo', 'Conductor Tres', $driverType, 3],
+                ['conductor4', 'Miguel Demo', 'Conductor Cuatro', $driverType, 4],
+                ['conductor5', 'Paola Demo', 'Conductor Cinco', $driverType, 5],
+                ['ayudante1', 'María Demo', 'Ayudante Uno', $helperType, 6],
+                ['ayudante2', 'José Demo', 'Ayudante Dos', $helperType, 7],
+                ['ayudante3', 'Rosa Demo', 'Ayudante Tres', $helperType, 8],
+                ['ayudante4', 'Pedro Demo', 'Ayudante Cuatro', $helperType, 9],
+                ['ayudante5', 'Elena Demo', 'Ayudante Cinco', $helperType, 10],
+                ['ayudante6', 'Lucía Demo', 'Ayudante Seis', $helperType, 11],
+                ['ayudante7', 'Andrés Demo', 'Ayudante Siete', $helperType, 12],
+                ['ayudante8', 'Valeria Demo', 'Ayudante Ocho', $helperType, 13],
+                ['ayudante9', 'Jorge Demo', 'Ayudante Nueve', $helperType, 14],
+                ['ayudante10', 'Elena Demo', 'Ayudante Diez', $helperType, 15],
             ];
 
             foreach ($staff as [$key, $firstName, $lastName, $employeeType, $number]) {
@@ -114,7 +122,7 @@ class ProgrammingDemoSeeder extends Seeder
 
             if (Schema::hasTable('personnel_groups')) {
                 foreach ([
-                    ['Grupo Moshoqueque (demo)', 'Moshoqueque (demo)', 'Mañana (demo)', 1, [1, 3, 5], [1, 2]],
+                    ['Grupo Moshoqueque (demo)', 'Moshoqueque (demo)', 'Mañana (demo)', 1, [1, 3, 5], [1]],
                     ['Grupo JLO Norte (demo)', 'José Leonardo Ortiz Norte (demo)', 'Tarde (demo)', 2, [2, 4, 6], [3, 4]],
                 ] as [$name, $zoneName, $shiftName, $number, $days, $helperNumbers]) {
                     $group = PersonnelGroup::firstOrCreate(['name' => $name], [

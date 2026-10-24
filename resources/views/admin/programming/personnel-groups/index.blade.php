@@ -47,6 +47,14 @@
             box-shadow: 0 0 0 .2rem rgba(91, 184, 245, .25);
         }
         #DataTable td { vertical-align: middle; }
+        #formModal .personnel-availability-card { border-radius: .3rem; padding: .55rem .7rem; color: #fff; font-size: .82rem; }
+        #formModal .personnel-availability-card strong { display: flex; align-items: flex-start; gap: .4rem; font-size: .9rem; }
+        #formModal .personnel-availability-card strong .bi { flex: 0 0 auto; margin-top: .12rem; }
+        #formModal .personnel-availability-card .availability-meta { opacity: .95; }
+        #formModal .personnel-availability-card.is-available { background: #198754; }
+        #formModal .personnel-availability-card.is-unavailable { background: #dc3545; }
+        #formModal .personnel-availability-card.is-pending { background: #64748b; }
+        #formModal .personnel-availability-card.is-warning { background: #b45309; }
     </style>
 @stop
 
@@ -104,10 +112,13 @@
             const modalElement = document.getElementById('formModal');
             const modalBody = $('#formModal .modal-body');
             const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+            let availabilityRequest = null;
+            let availabilityRequestId = 0;
+            let availabilityBlocked = false;
 
             function destroyPersonnelSearches() {
                 $('#formModal .group-search.select2-hidden-accessible').each(function () {
-                    $(this).off('.personnelSearch').select2('destroy');
+                    $(this).off('.personnelSearch').off('.personnelCapacity').select2('destroy');
                 });
             }
 
@@ -137,13 +148,33 @@
                     if (multiple) {
                         select.next('.select2').find('.select2-search__field')
                             .attr('aria-label', 'Buscar ayudantes por nombre o DNI');
+                        select.on('select2:selecting.personnelCapacity', function (event) {
+                            const capacity = Number($('#group_vehicle_id option:selected').data('capacity'));
+                            const maxHelpers = capacity - 1;
+                            const selectedHelpers = select.val()?.length || 0;
+                            const error = $('#groupHelpersError');
+
+                            if (!capacity) {
+                                event.preventDefault();
+                                error.text('Seleccione primero el vehículo para validar cuántos ayudantes admite.').removeClass('d-none');
+                                return;
+                            }
+                            if (selectedHelpers >= maxHelpers) {
+                                event.preventDefault();
+                                error.text(`Este vehículo permite hasta ${maxHelpers} ayudante${maxHelpers === 1 ? '' : 's'}. Quite una selección o elija otro vehículo.`).removeClass('d-none');
+                            }
+                        });
                     }
                 });
                 updateCapacity();
+                refreshEmployeeAvailability();
             }).on('hide.bs.modal', function () {
                 $('#formModal .group-search.select2-hidden-accessible').select2('close');
             }).on('hidden.bs.modal', function () {
                 destroyPersonnelSearches();
+                if (availabilityRequest) availabilityRequest.abort();
+                availabilityRequest = null;
+                availabilityRequestId++;
                 modalBody.empty();
             });
 
@@ -151,13 +182,135 @@
                 const capacity = Number($('#group_vehicle_id option:selected').data('capacity'));
                 const helpers = $('#group_helpers').val()?.length || 0;
                 const label = $('#groupCapacity');
+                const helperError = $('#groupHelpersError');
+                helperError.addClass('d-none').text('');
                 if (!capacity) {
                     label.text('La capacidad incluye al conductor y a los ayudantes.').removeClass('text-danger').addClass('text-info');
+                    return true;
+                }
+                const maxHelpers = Math.max(0, capacity - 1);
+                const tooMany = helpers > maxHelpers;
+                label.text(`Capacidad: ${capacity} personas (1 conductor y hasta ${maxHelpers} ayudante${maxHelpers === 1 ? '' : 's'}). Seleccionadas: ${helpers + 1}.`)
+                    .toggleClass('text-danger', tooMany).toggleClass('text-info', !tooMany);
+                if (tooMany) {
+                    helperError.text(`El vehículo admite como máximo ${maxHelpers} ayudante${maxHelpers === 1 ? '' : 's'}. Quite ${helpers - maxHelpers} selección${helpers - maxHelpers === 1 ? '' : 'es'} o elija otro vehículo.`).removeClass('d-none');
+                }
+                return !tooMany;
+            }
+
+            function syncSaveState() {
+                const capacityIsValid = updateCapacity();
+                $('#frmPersonnelGroup button[type="submit"]').prop('disabled', !capacityIsValid || availabilityBlocked);
+            }
+
+            function clearAvailabilityServerErrors() {
+                const errors = $('#personnelGroupErrors');
+                errors.children().filter(function () {
+                    return $(this).text().includes('no está disponible:');
+                }).remove();
+                if (errors.children().length === 0) errors.addClass('d-none').empty();
+            }
+
+            function availabilityCard(employee, state, columnClass) {
+                const card = $('<div>').addClass(columnClass);
+                const available = state && state.available === true;
+                const unavailable = state && state.available === false;
+                const cardClass = available ? 'is-available' : unavailable ? 'is-unavailable' : state?.warning ? 'is-warning' : 'is-pending';
+                const icon = available ? 'bi-check-circle-fill' : unavailable ? 'bi-x-circle-fill' : state?.warning ? 'bi-exclamation-triangle-fill' : 'bi-hourglass-split';
+                const message = available
+                    ? 'Disponible para los días y turno seleccionados.'
+                    : unavailable
+                        ? 'No disponible: ' + state.conflicts.join('; ') + '.'
+                        : state?.message || 'Verificando disponibilidad...';
+                const panel = $('<div>').addClass('personnel-availability-card ' + cardClass);
+                const title = $('<strong>');
+                title.append($('<i>').addClass('bi ' + icon));
+                title.append($('<span>').text(employee.full_name || 'Personal seleccionado'));
+                panel.append(title);
+                panel.append($('<div>').addClass('availability-meta').text('DNI: ' + (employee.dni || '—') + ' | ' + (employee.type || 'Personal')));
+                panel.append($('<div>').addClass('mt-1').text(message));
+                return card.append(panel);
+            }
+
+            function refreshEmployeeAvailability() {
+                if (availabilityRequest) availabilityRequest.abort();
+                availabilityRequest = null;
+                const requestId = ++availabilityRequestId;
+                const driver = $('#group_driver_id option:selected');
+                const helpers = $('#group_helpers option:selected').toArray().map(option => $(option));
+                const selected = [];
+                if (driver.val()) selected.push({ option: driver, target: '#groupDriverAvailability', column: 'col-12' });
+                helpers.forEach(option => selected.push({ option, target: '#groupHelpersAvailability', column: 'col-12 col-md-6 mb-2' }));
+                $('#groupDriverAvailability, #groupHelpersAvailability').empty();
+                if (!selected.length) {
+                    availabilityBlocked = false;
+                    syncSaveState();
                     return;
                 }
-                const tooMany = helpers + 1 > capacity;
-                label.text(`Capacidad: ${capacity} personas (1 conductor y hasta ${Math.max(0, capacity - 1)} ayudantes). Seleccionadas: ${helpers + 1}.`)
-                    .toggleClass('text-danger', tooMany).toggleClass('text-info', !tooMany);
+
+                const employees = selected.map(item => ({
+                    id: Number(item.option.val()),
+                    full_name: item.option.data('name') || item.option.text().trim(),
+                    dni: item.option.data('dni'),
+                    type: item.option.data('type')
+                }));
+                const shiftId = $('#group_shift_id').val();
+                const days = $('input[name="days_of_week[]"]:checked').map(function () { return Number(this.value); }).get();
+                if (!shiftId || !days.length) {
+                    availabilityBlocked = true;
+                    syncSaveState();
+                    selected.forEach((item, index) => $(item.target).append(availabilityCard(employees[index], {
+                        message: 'Seleccione el turno y al menos un día para comprobar la disponibilidad.'
+                    }, item.column)));
+                    return;
+                }
+
+                availabilityBlocked = true;
+                syncSaveState();
+                selected.forEach((item, index) => $(item.target).append(availabilityCard(employees[index], {
+                    message: 'Verificando disponibilidad...'
+                }, item.column)));
+                const data = {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    shift_id: shiftId,
+                    days_of_week: days,
+                    employee_ids: employees.map(employee => employee.id)
+                };
+                const groupId = $('#groupCurrentId').val();
+                if (groupId) data.exclude_group_id = groupId;
+
+                availabilityRequest = $.ajax({
+                    url: @json(route('admin.programming.personnel-groups.availability')),
+                    type: 'POST',
+                    data,
+                    headers: { Accept: 'application/json' }
+                }).done(function (response) {
+                    if (requestId !== availabilityRequestId) return;
+                    $('#groupDriverAvailability, #groupHelpersAvailability').empty();
+                    let allAvailable = true;
+                    selected.forEach((item, index) => {
+                        const state = response.employees[String(employees[index].id)] || {
+                            available: false,
+                            conflicts: ['no se pudo encontrar el registro del personal']
+                        };
+                        if (!state.available) allAvailable = false;
+                        $(item.target).append(availabilityCard(employees[index], state, item.column));
+                    });
+                    availabilityBlocked = !allAvailable;
+                    if (allAvailable) clearAvailabilityServerErrors();
+                    syncSaveState();
+                }).fail(function (xhr, status) {
+                    if (status === 'abort' || requestId !== availabilityRequestId) return;
+                    $('#groupDriverAvailability, #groupHelpersAvailability').empty();
+                    availabilityBlocked = true;
+                    syncSaveState();
+                    selected.forEach(item => $(item.target).append(availabilityCard({
+                        full_name: item.option.data('name') || item.option.text().trim(),
+                        dni: item.option.data('dni'), type: item.option.data('type')
+                    }, { warning: true, message: 'No se pudo verificar. Intente nuevamente.' }, item.column)));
+                }).always(function () {
+                    if (requestId === availabilityRequestId) availabilityRequest = null;
+                });
             }
 
             function openForm(url, title, button) {
@@ -181,12 +334,17 @@
                 const url = @json(route('admin.programming.personnel-groups.edit', ':id'));
                 openForm(url.replace(':id', $(this).data('id')), 'Editar Grupo de Personal', $(this));
             });
-            $(document).on('change', '#group_vehicle_id, #group_helpers', updateCapacity);
+            $(document).on('change', '#group_vehicle_id, #group_helpers', syncSaveState);
+            $(document).on('change', '#group_shift_id, #group_driver_id, #group_helpers, input[name="days_of_week[]"]', refreshEmployeeAvailability);
             $(document).on('submit', '#frmPersonnelGroup', function (event) {
                 event.preventDefault();
                 const form = $(this);
                 const button = form.find('[type="submit"]');
                 if (button.prop('disabled')) return;
+                if (availabilityBlocked || !updateCapacity()) {
+                    $('#groupHelpersError').trigger('focus');
+                    return;
+                }
                 button.prop('disabled', true);
                 const errors = form.find('#personnelGroupErrors').empty().addClass('d-none');
                 $.ajax({
@@ -204,8 +362,12 @@
                         : [xhr.responseJSON?.message || 'No se pudo guardar el grupo. Intente nuevamente.'];
                     messages.forEach(message => $('<div>').text(message).appendTo(errors));
                     errors.removeClass('d-none').trigger('focus');
+                    if (messages.some(message => message.includes('no está disponible:'))) {
+                        availabilityBlocked = true;
+                        refreshEmployeeAvailability();
+                    }
                 }).always(function () {
-                    button.prop('disabled', false);
+                    syncSaveState();
                 });
             });
             $(document).on('submit', '.frmEliminar', function (event) {

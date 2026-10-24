@@ -3,6 +3,9 @@
     $selectedHelpers = old('helpers', $group?->helpers->pluck('id')->all() ?? []);
 @endphp
 <div class="alert alert-danger d-none" id="personnelGroupErrors" role="alert" tabindex="-1"></div>
+@if ($group)
+    <input type="hidden" id="groupCurrentId" value="{{ $group->id }}">
+@endif
 <div class="row">
     <div class="col-md-6 mb-3">
         <label for="group_name" class="font-weight-bold">Nombre del grupo *</label>
@@ -54,21 +57,24 @@
     </div>
     <div class="col-md-6 mb-3">
         <label for="group_driver_id" id="groupDriverLabel" class="font-weight-bold">Conductor *</label>
-        <select class="form-control group-search" name="driver_id" id="group_driver_id" required>
+        <select class="form-control group-search" name="driver_id" id="group_driver_id" aria-describedby="groupDriverAvailability" required>
             <option value="">Busque por nombre, apellido o DNI</option>
             @foreach ($drivers as $driver)
-                <option value="{{ $driver->id }}" @selected(old('driver_id', $group?->driver_id) == $driver->id)>{{ $driver->full_name }} · DNI {{ $driver->dni }}{{ ! $driver->status || $driver->employeeType?->name !== 'Conductor' ? ' (no disponible: reemplazar)' : '' }}</option>
+                <option value="{{ $driver->id }}" data-name="{{ $driver->full_name }}" data-dni="{{ $driver->dni }}" data-type="Conductor" @selected(old('driver_id', $group?->driver_id) == $driver->id)>{{ $driver->full_name }} · DNI {{ $driver->dni }}{{ ! $driver->status || $driver->employeeType?->name !== 'Conductor' ? ' (no disponible: reemplazar)' : '' }}</option>
             @endforeach
         </select>
+        <div id="groupDriverAvailability" class="mt-2" aria-live="polite"></div>
     </div>
     <div class="col-md-6 mb-3">
         <label for="group_helpers" id="groupHelpersLabel" class="font-weight-bold">Ayudantes *</label>
-        <select class="form-control group-search" name="helpers[]" id="group_helpers" multiple required>
+        <select class="form-control group-search" name="helpers[]" id="group_helpers" aria-describedby="groupHelpersHint groupHelpersError" multiple required>
             @foreach ($helpers as $helper)
-                <option value="{{ $helper->id }}" @selected(in_array($helper->id, $selectedHelpers))>{{ $helper->full_name }} · DNI {{ $helper->dni }}{{ ! $helper->status || $helper->employeeType?->name !== 'Ayudante' ? ' (no disponible: reemplazar)' : '' }}</option>
+                <option value="{{ $helper->id }}" data-name="{{ $helper->full_name }}" data-dni="{{ $helper->dni }}" data-type="Ayudante" @selected(in_array($helper->id, $selectedHelpers))>{{ $helper->full_name }} · DNI {{ $helper->dni }}{{ ! $helper->status || $helper->employeeType?->name !== 'Ayudante' ? ' (no disponible: reemplazar)' : '' }}</option>
             @endforeach
         </select>
-        <small class="text-muted">Seleccione uno o varios ayudantes. Puede buscarlos por nombre o DNI.</small>
+        <small class="text-muted d-block mt-1" id="groupHelpersHint">Seleccione uno o varios ayudantes. Puede buscarlos por nombre o DNI.</small>
+        <small class="text-danger d-block mt-1 d-none" id="groupHelpersError" role="alert" aria-live="assertive"></small>
+        <div id="groupHelpersAvailability" class="row mt-2" aria-live="polite"></div>
     </div>
     <div class="col-md-6 mb-3">
         <label for="group_status" class="font-weight-bold">Estado *</label>

@@ -90,16 +90,16 @@ class VacationController extends Controller
                 
                 if ($vacation->status === 'Aprobada') {
                     return '<div class="vac-actions">
-                        <button class="btn btn-success btn-sm" disabled title="Solicitud aprobada">
+                        <button class="btn btn-success btn-sm btnAprobar" disabled title="Solicitud aprobada">
                             <i class="bi bi-check-lg"></i>
                         </button>
-                        <button class="btn btn-danger btn-sm" disabled title="Solicitud aprobada">
+                        <button class="btn btn-danger btn-sm btnRechazar" disabled title="Solicitud aprobada">
                             <i class="bi bi-x-lg"></i>
                         </button>
-                        <button class="btn btn-primary btn-sm" disabled title="Solicitud aprobada">
+                        <button class="btn btn-primary btn-sm btnEditar" disabled title="Solicitud aprobada">
                             <i class="bi bi-pencil-square"></i>
                         </button>
-                        <button class="btn btn-danger btn-sm" disabled title="Solicitud aprobada">
+                        <button class="btn btn-danger btn-sm btnEliminar" disabled title="Solicitud aprobada">
                             <i class="bi bi-trash3-fill"></i>
                         </button>
                     </div>';

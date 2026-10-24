@@ -264,48 +264,61 @@ table.dataTable tbody td {
     border-radius: 6px;
 }
 
-/* Aprobar: verde */
-#DataTable .vac-actions .btnAprobar {
-    background: #d8f3df;
-    border-color: #d8f3df;
-    color: #176b37;
-}
-
-#DataTable .vac-actions .btnAprobar:hover {
+/* Aprobar y denegar tienen colores sólidos y distintos entre sí. */
+#DataTable .vac-actions .btnAprobar:not(:disabled) {
     background: #198754;
     border-color: #198754;
     color: #fff;
 }
 
-/* Rechazar: rojo */
-#DataTable .vac-actions .btnRechazar {
-    background: #fbe1e5;
-    border-color: #fbe1e5;
-    color: #b02a37;
+#DataTable .vac-actions .btnRechazar:not(:disabled) {
+    background: #c2410c;
+    border-color: #c2410c;
+    color: #fff;
 }
 
-#DataTable .vac-actions .btnRechazar:hover {
+/* Editar y eliminar conservan el mismo estilo de la Lista de Personal. */
+#DataTable .vac-actions .btnEditar:not(:disabled) {
+    background: #e3edff;
+    border-color: #d1e0ff;
+    color: #1746a2;
+}
+
+#DataTable .vac-actions .frmEliminar .btn-danger:not(:disabled) {
+    background: #ffe5e8;
+    border-color: #ffd1d8;
+    color: #c62843;
+}
+
+#DataTable .vac-actions .btnAprobar:not(:disabled):hover {
+    background: #146c43;
+    border-color: #146c43;
+}
+
+#DataTable .vac-actions .btnRechazar:not(:disabled):hover {
+    background: #9a3412;
+    border-color: #9a3412;
+}
+
+#DataTable .vac-actions .btnEditar:not(:disabled):hover {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+}
+
+#DataTable .vac-actions .frmEliminar .btn-danger:not(:disabled):hover {
     background: #dc3545;
     border-color: #dc3545;
     color: #fff;
 }
 
-/* Editar: reutiliza el estilo RSU */
-#DataTable .vac-actions .btnEditar {
-    background: var(--rsu-soft);
-    border-color: var(--rsu-soft);
-    color: var(--rsu-navy);
-}
-
-/* Eliminar: reutiliza la paleta del sistema */
-#DataTable .vac-actions .frmEliminar .btn-danger {
-    background: #fbe6ea;
-    border-color: #fbe6ea;
-    color: #a8445a;
-}
-
-#DataTable .vac-actions .frmEliminar .btn-danger:hover {
-    background: #a8445a;
-    border-color: #a8445a;
-    color: #fff;
+/* Las acciones bloqueadas se muestran en gris neutro, sin apariencia de alerta. */
+#DataTable .vac-actions .btn:disabled,
+#DataTable .vac-actions .frmEliminar .btn-danger:disabled {
+    background: #e5e7eb !important;
+    border-color: #d1d5db !important;
+    color: #858b98 !important;
+    opacity: 1;
+    cursor: not-allowed;
+    box-shadow: none;
 }

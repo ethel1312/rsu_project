@@ -3,6 +3,7 @@
 @section('plugins.Select2', true)
 
 @section('css')
+    <link rel="stylesheet" href="{{ asset('css/custom-listados.css') }}">
     <style>
         #formModal .select2-container { width: 100% !important; }
         #formModal .select2-selection--single { min-height: 38px; border-radius: .375rem; }
