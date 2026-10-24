@@ -16,6 +16,7 @@ use App\Http\Controllers\admin\Programming\ZoneController;
 use App\Http\Controllers\admin\Programming\ShiftController;
 use App\Http\Controllers\admin\Programming\HolidayController;
 use App\Http\Controllers\admin\Programming\PersonnelGroupController;
+use App\Http\Controllers\admin\Programming\ProgrammingScheduleController;
 
 use Illuminate\Support\Facades\Route;
 
@@ -105,7 +106,25 @@ Route::middleware('auth')->group(function () {
     Route::resource('holidays', HolidayController::class)
         ->except(['show'])->names('admin.programming.holidays');
 
+    Route::post('personnel-groups/availability', [PersonnelGroupController::class, 'availability'])
+        ->name('admin.programming.personnel-groups.availability');
     Route::resource('personnel-groups', PersonnelGroupController::class)
         ->parameters(['personnel-groups' => 'personnelGroup'])
         ->except(['show'])->names('admin.programming.personnel-groups');
 });
+
+Route::middleware('auth')->prefix('programming/schedules')->name('admin.programming.schedules.')->group(function () {
+    Route::get('/', [ProgrammingScheduleController::class, 'index'])->name('index');
+    Route::get('/create/mass', [ProgrammingScheduleController::class, 'createMass'])->name('create-mass');
+    Route::get('/create', [ProgrammingScheduleController::class, 'create'])->name('create');
+    Route::get('/groups/{personnelGroup}/data', [ProgrammingScheduleController::class, 'groupData'])->name('groups.data');
+    Route::get('/history', [ProgrammingScheduleController::class, 'allHistory'])->name('history.all');
+    Route::post('/availability', [ProgrammingScheduleController::class, 'validateAvailability'])->name('availability');
+    Route::post('/', [ProgrammingScheduleController::class, 'store'])->name('store');
+    Route::get('/{schedule}/history', [ProgrammingScheduleController::class, 'history'])->name('history');
+    Route::get('/{schedule}/edit', [ProgrammingScheduleController::class, 'edit'])->name('edit');
+    Route::put('/{schedule}', [ProgrammingScheduleController::class, 'update'])->name('update');
+    Route::patch('/{schedule}/finish', [ProgrammingScheduleController::class, 'finish'])->name('finish');
+    Route::delete('/{schedule}', [ProgrammingScheduleController::class, 'destroy'])->name('destroy');
+});
+

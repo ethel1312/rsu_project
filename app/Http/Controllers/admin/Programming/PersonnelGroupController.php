@@ -39,6 +39,27 @@ class PersonnelGroupController extends Controller
         return view('admin.programming.personnel-groups.index');
     }
 
+    public function availability(Request $request)
+    {
+        $data = $request->validate([
+            'shift_id' => ['required', 'integer', Rule::exists('shifts', 'id')],
+            'days_of_week' => ['required', 'array', 'min:1'],
+            'days_of_week.*' => ['required', 'integer', 'distinct', Rule::in(array_keys(PersonnelGroup::WEEKDAYS))],
+            'employee_ids' => ['required', 'array', 'min:1', 'max:30'],
+            'employee_ids.*' => ['required', 'integer', 'distinct', Rule::exists('employees', 'id')],
+            'exclude_group_id' => ['nullable', 'integer', Rule::exists('personnel_groups', 'id')],
+        ]);
+
+        return response()->json([
+            'employees' => $this->employeeAvailability(
+                array_map('intval', $data['employee_ids']),
+                (int) $data['shift_id'],
+                array_map('intval', $data['days_of_week']),
+                isset($data['exclude_group_id']) ? (int) $data['exclude_group_id'] : null,
+            ),
+        ]);
+    }
+
     public function create()
     {
         return view('admin.programming.personnel-groups.create', $this->formData());
@@ -78,6 +99,88 @@ class PersonnelGroupController extends Controller
         $personnelGroup->delete();
 
         return response()->json(['message' => 'Grupo de personal eliminado correctamente.']);
+    }
+
+    private function employeeAvailability(array $employeeIds, int $shiftId, array $days, ?int $excludeGroupId = null): array
+    {
+        $shift = Shift::findOrFail($shiftId);
+        $employees = Employee::with('employeeType')->whereIn('id', $employeeIds)->get()->keyBy('id');
+        $groups = PersonnelGroup::with([
+            'shift:id,name,start_time,end_time',
+            'helpers:id',
+        ])
+            ->where('status', true)
+            ->when($excludeGroupId, fn ($query) => $query->where('id', '!=', $excludeGroupId))
+            ->where(function ($query) use ($employeeIds) {
+                $query->whereIn('driver_id', $employeeIds)
+                    ->orWhereHas('helpers', fn ($helperQuery) => $helperQuery->whereIn('employees.id', $employeeIds));
+            })
+            ->get();
+
+        $result = [];
+        foreach ($employees as $employee) {
+            $conflicts = [];
+            if (! $employee->status) {
+                $conflicts[] = 'el personal está inactivo';
+            }
+
+            foreach ($groups as $group) {
+                $groupCrew = array_merge([(int) $group->driver_id], $group->helpers->pluck('id')->map(fn ($id) => (int) $id)->all());
+                if (! in_array((int) $employee->id, $groupCrew, true)) continue;
+
+                $groupDays = array_map('intval', $group->days_of_week ?? []);
+                if (! $this->shiftsOverlapOnDays($shift, $days, $group->shift, $groupDays)) continue;
+
+                $conflicts[] = $group->name.' ('.$group->shift->name.' '.substr($group->shift->start_time, 0, 5).'–'.substr($group->shift->end_time, 0, 5).')';
+            }
+
+            $result[(string) $employee->id] = [
+                'id' => (int) $employee->id,
+                'full_name' => $employee->full_name,
+                'dni' => $employee->dni,
+                'type' => $employee->employeeType?->name ?? 'Personal',
+                'available' => $conflicts === [],
+                'conflicts' => $conflicts,
+            ];
+        }
+
+        return $result;
+    }
+
+    private function shiftsOverlapOnDays(Shift $candidateShift, array $candidateDays, ?Shift $otherShift, array $otherDays): bool
+    {
+        if (! $otherShift) return false;
+
+        foreach ($candidateDays as $candidateDay) {
+            foreach ($otherDays as $otherDay) {
+                foreach ([-1, 0, 1] as $dayOffset) {
+                    $expectedOtherDay = ((($candidateDay - 1 + $dayOffset + 7) % 7) + 1);
+                    if ($expectedOtherDay !== $otherDay) continue;
+                    if ($this->shiftTimesOverlap($candidateShift, $otherShift, $dayOffset)) return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private function shiftTimesOverlap(Shift $first, Shift $second, int $secondDayOffset): bool
+    {
+        $firstStart = $this->timeInMinutes($first->start_time);
+        $firstEnd = $this->timeInMinutes($first->end_time);
+        if ($firstEnd <= $firstStart) $firstEnd += 1440;
+
+        $secondStart = $this->timeInMinutes($second->start_time) + ($secondDayOffset * 1440);
+        $secondEnd = $this->timeInMinutes($second->end_time) + ($secondDayOffset * 1440);
+        if ($secondEnd <= $secondStart) $secondEnd += 1440;
+
+        return $firstStart < $secondEnd && $secondStart < $firstEnd;
+    }
+
+    private function timeInMinutes(string $time): int
+    {
+        [$hours, $minutes] = array_map('intval', explode(':', substr($time, 0, 5)));
+        return $hours * 60 + $minutes;
     }
 
     private function formData(?PersonnelGroup $group = null): array
@@ -178,6 +281,22 @@ class PersonnelGroupController extends Controller
         $data['days_of_week'] = collect($data['days_of_week'])->map(fn ($day) => (int) $day)->sort()->values()->all();
         $data['helpers'] = array_map('intval', $data['helpers']);
         $data['status'] = $data['status'] ?? $group?->status ?? true;
+
+        if ((bool) $data['status']) {
+            $availability = $this->employeeAvailability(
+                array_merge([(int) $data['driver_id']], $data['helpers']),
+                (int) $data['shift_id'],
+                $data['days_of_week'],
+                $group?->id,
+            );
+            $errors = [];
+            foreach ($availability as $employee) {
+                if ($employee['available']) continue;
+                $field = $employee['type'] === 'Conductor' ? 'driver_id' : 'helpers';
+                $errors[$field][] = $employee['full_name'].' no está disponible: '.implode(', ', $employee['conflicts']).'.';
+            }
+            if ($errors !== []) throw ValidationException::withMessages($errors);
+        }
 
         return $data;
     }

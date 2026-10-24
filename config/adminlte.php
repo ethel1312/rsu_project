@@ -884,6 +884,11 @@ return [
                     'route' => 'admin.programming.personnel-groups.index',
                     'icon' => 'bi bi-people',
                 ],
+                [
+                    'text' => 'Programaciones',
+                    'route' => 'admin.programming.schedules.index',
+                    'icon' => 'bi bi-calendar2-week',
+                ],
             ],
         ],
         [
@@ -1241,3 +1246,5 @@ return [
 
     'spa_navigation' => true,
 ];
+
+
