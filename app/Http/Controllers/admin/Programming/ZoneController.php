@@ -138,6 +138,24 @@ class ZoneController extends Controller
             'coordinates' => $coords,
         ]);
 
+        // Dentro de store() y update() luego de validar $coords:
+        $query = Zone::where('status', true);
+        if (isset($zone)) {
+            $query->where('id', '!=', $zone->id);
+        }
+        $otherZones = $query->get();
+
+        foreach ($otherZones as $existing) {
+            $exCoords = is_array($existing->coordinates) ? $existing->coordinates : json_decode($existing->coordinates, true);
+            if (is_array($exCoords) && count($exCoords) >= 3) {
+                if ($this->polygonsOverlap($coords, $exCoords)) {
+                    return response()->json([
+                        'error' => "El perímetro se cruza o invade la zona '{$existing->name}'."
+                    ], 422);
+                }
+            }
+        }
+
         return response()->json(['message' => 'Zona registrada exitosamente.']);
     }
 
@@ -181,6 +199,24 @@ class ZoneController extends Controller
             'coordinates' => $coords,
         ]);
 
+        // Dentro de store() y update() luego de validar $coords:
+        $query = Zone::where('status', true);
+        if (isset($zone)) {
+            $query->where('id', '!=', $zone->id);
+        }
+        $otherZones = $query->get();
+
+        foreach ($otherZones as $existing) {
+            $exCoords = is_array($existing->coordinates) ? $existing->coordinates : json_decode($existing->coordinates, true);
+            if (is_array($exCoords) && count($exCoords) >= 3) {
+                if ($this->polygonsOverlap($coords, $exCoords)) {
+                    return response()->json([
+                        'error' => "El perímetro se cruza o invade la zona '{$existing->name}'."
+                    ], 422);
+                }
+            }
+}
+
         return response()->json(['message' => 'Zona actualizada exitosamente.']);
     }
 
@@ -195,5 +231,40 @@ class ZoneController extends Controller
 
         $zone->delete();
         return response()->json(['message' => 'Zona eliminada correctamente.']);
+    }
+
+    /**
+ * Verifica si dos polígonos tienen intersección (Ray Casting / Segment Intersection)
+ */
+    private function polygonsOverlap(array $polyA, array $polyB): bool
+    {
+        // Función auxiliar para determinar si dos segmentos se cruzan
+        $ccw = function($p1, $p2, $p3) {
+            return ($p3['lat'] - $p1['lat']) * ($p2['lng'] - $p1['lng']) > ($p2['lat'] - $p1['lat']) * ($p3['lng'] - $p1['lng']);
+        };
+
+        $intersect = function($p1, $p2, $p3, $p4) use ($ccw) {
+            return ($ccw($p1, $p3, $p4) != $ccw($p2, $p3, $p4)) && ($ccw($p1, $p2, $p3) != $ccw($p1, $p2, $p4));
+        };
+
+        $countA = count($polyA);
+        $countB = count($polyB);
+
+        // Revisar cruce de aristas
+        for ($i = 0; $i < $countA; $i++) {
+            $a1 = $polyA[$i];
+            $a2 = $polyA[($i + 1) % $countA];
+
+            for ($j = 0; $j < $countB; $j++) {
+                $b1 = $polyB[$j];
+                $b2 = $polyB[($j + 1) % $countB];
+
+                if ($intersect($a1, $a2, $b1, $b2)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }
