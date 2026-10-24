@@ -187,19 +187,46 @@
         map.addControl(drawControl);
 
         map.on(L.Draw.Event.CREATED, function (e) {
+            const latlngs = e.layer.getLatLngs()[0];
+            const testCoords = latlngs.map(pt => ({ lat: pt.lat, lng: pt.lng }));
+
+            // Validar superposición antes de agregarlo al mapa
+            const collidedZoneName = checkCollision(testCoords);
+            if (collidedZoneName) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Zona superpuesta',
+                    html: `El perímetro trazado invade el área de <b>"${collidedZoneName}"</b>.<br>No se permite crear zonas sobrepuestas.`
+                });
+                return; // Detiene la creación y descarta el dibujo
+            }
+
             drawnItems.clearLayers();
             activePolygon = e.layer;
             drawnItems.addLayer(activePolygon);
 
-            const latlngs = activePolygon.getLatLngs()[0];
-            currentCoords = latlngs.map(pt => ({ lat: pt.lat, lng: pt.lng }));
+            currentCoords = testCoords;
             syncCoordinates();
         });
 
         map.on(L.Draw.Event.EDITED, function (e) {
             e.layers.eachLayer(function (layer) {
                 const latlngs = layer.getLatLngs()[0];
-                currentCoords = latlngs.map(pt => ({ lat: pt.lat, lng: pt.lng }));
+                const testCoords = latlngs.map(pt => ({ lat: pt.lat, lng: pt.lng }));
+
+                const collidedZoneName = checkCollision(testCoords);
+                if (collidedZoneName) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Zona superpuesta',
+                        html: `El cambio invade el área de <b>"${collidedZoneName}"</b>.<br>Ajusta los vértices fuera de las demás zonas.`
+                    });
+                    // Revertir a la versión anterior redibujando
+                    redrawPolygonFromCoords();
+                    return;
+                }
+
+                currentCoords = testCoords;
                 syncCoordinates();
             });
         });
@@ -312,5 +339,46 @@
                 map.setView([-6.7628, -79.8375], 14);
             }
         }, 350);
+
+        // Función para verificar si el nuevo polígono se cruza o solapa con zonas previas
+        function checkCollision(newCoords) {
+            if (!newCoords || newCoords.length < 3 || !existingZones || existingZones.length === 0) {
+                return false;
+            }
+
+            try {
+                // Cerrar el anillo para formato GeoJSON [lng, lat]
+                const ring = newCoords.map(c => [parseFloat(c.lng), parseFloat(c.lat)]);
+                ring.push([parseFloat(newCoords[0].lng), parseFloat(newCoords[0].lat)]);
+                const newPoly = turf.polygon([ring]);
+
+                for (let i = 0; i < existingZones.length; i++) {
+                    const z = existingZones[i];
+                    let coords = z.coordinates;
+                    if (typeof coords === 'string') {
+                        try { coords = JSON.parse(coords); } catch(e) { coords = []; }
+                    }
+
+                    if (Array.isArray(coords) && coords.length >= 3) {
+                        const exRing = coords.map(c => [parseFloat(c.lng), parseFloat(c.lat)]);
+                        exRing.push([parseFloat(coords[0].lng), parseFloat(coords[0].lat)]);
+                        const exPoly = turf.polygon([exRing]);
+
+                        // Comprobar intersección o solapamiento
+                        const intersects = turf.booleanIntersects(newPoly, exPoly);
+                        const overlaps = turf.booleanOverlap(newPoly, exPoly);
+
+                        if (intersects || overlaps) {
+                            return z.name || 'una zona existente';
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Error validando geometría:", err);
+            }
+
+            return false;
+        }
+
     })();
 </script>
