@@ -168,6 +168,7 @@ class AttendanceTest extends TestCase
 
     public function test_editing_attendance_only_changes_time_and_notes(): void
     {
+        $this->admin();
         $other = $this->employee->replicate();
         $other->fill(['dni' => '87654321', 'first_name' => 'Luis', 'last_name' => 'Otro', 'email' => 'otro@example.test'])->save();
         $attendance = $this->createAttendance('08:00', ['notes' => 'Nota original']);

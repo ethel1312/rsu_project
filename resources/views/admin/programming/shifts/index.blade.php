@@ -139,8 +139,8 @@
                     }).done(function (response) {
                         table.ajax.reload(null, false);
                         Swal.fire('Éxito', response.message, 'success');
-                    }).fail(function () {
-                        Swal.fire('Error', 'No se pudo eliminar el turno.', 'error');
+                    }).fail(function (xhr) {
+                        Swal.fire('Error', xhr.responseJSON?.message || 'No se pudo eliminar el turno.', 'error');
                     }).always(function () {
                         button.prop('disabled', false);
                     });

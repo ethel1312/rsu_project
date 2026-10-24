@@ -14,6 +14,8 @@ use App\Http\Controllers\admin\Employees\VacationController;
 use App\Http\Controllers\admin\Employees\AttendanceController;
 use App\Http\Controllers\admin\Programming\ZoneController;
 use App\Http\Controllers\admin\Programming\ShiftController;
+use App\Http\Controllers\admin\Programming\HolidayController;
+use App\Http\Controllers\admin\Programming\PersonnelGroupController;
 
 use Illuminate\Support\Facades\Route;
 
@@ -84,6 +86,9 @@ Route::get(
 )->name('admin.vacations.employees');
 
 // ZONAAS
+Route::get('zones/map', [ZoneController::class, 'map'])
+    ->middleware('auth')
+    ->name('admin.programming.zones.map');
 Route::resource('zones', ZoneController::class)->names('admin.programming.zones');
 
 //Turnos
@@ -91,3 +96,16 @@ Route::resource('shifts', ShiftController::class)
     ->except(['show'])
     ->middleware('auth')
     ->names('admin.programming.shifts');
+
+Route::middleware('auth')->group(function () {
+    Route::post('holidays/import', [HolidayController::class, 'import'])
+        ->name('admin.programming.holidays.import');
+    Route::patch('holidays/{holiday}/toggle-status', [HolidayController::class, 'toggleStatus'])
+        ->name('admin.programming.holidays.toggle-status');
+    Route::resource('holidays', HolidayController::class)
+        ->except(['show'])->names('admin.programming.holidays');
+
+    Route::resource('personnel-groups', PersonnelGroupController::class)
+        ->parameters(['personnel-groups' => 'personnelGroup'])
+        ->except(['show'])->names('admin.programming.personnel-groups');
+});

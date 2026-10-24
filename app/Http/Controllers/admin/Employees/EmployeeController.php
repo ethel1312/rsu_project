@@ -384,6 +384,11 @@ class EmployeeController extends Controller
     public function destroy(string $id)
     {
         try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('personnel_groups')
+                && (\Illuminate\Support\Facades\DB::table('personnel_groups')->where('driver_id', $id)->exists()
+                    || \Illuminate\Support\Facades\DB::table('personnel_group_helpers')->where('employee_id', $id)->exists())) {
+                return response()->json(['error' => 'No se puede eliminar este trabajador porque pertenece a un grupo de personal. Reemplácelo en el grupo primero.'], 409);
+            }
 
             Employee::find($id)->delete();
 
