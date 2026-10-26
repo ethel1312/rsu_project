@@ -115,6 +115,7 @@ Route::middleware('auth')->group(function () {
 
 Route::middleware('auth')->prefix('programming/schedules')->name('admin.programming.schedules.')->group(function () {
     Route::get('/', [ProgrammingScheduleController::class, 'index'])->name('index');
+    Route::get('/holidays', [ProgrammingScheduleController::class, 'holidays'])->name('holidays');
     Route::get('/create/mass', [ProgrammingScheduleController::class, 'createMass'])->name('create-mass');
     Route::get('/create', [ProgrammingScheduleController::class, 'create'])->name('create');
     Route::get('/groups/{personnelGroup}/data', [ProgrammingScheduleController::class, 'groupData'])->name('groups.data');

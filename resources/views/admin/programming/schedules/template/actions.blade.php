@@ -1,12 +1,12 @@
 <div class="d-flex justify-content-center flex-wrap" style="gap:4px">
     <button type="button" class="btn btn-sm btn-outline-info btnScheduleHistory"
-            data-url="{{ route('admin.programming.schedules.history', $schedule) }}"
-            title="Ver historial" aria-label="Ver historial">
+            data-url="{{ route('admin.programming.schedules.history', ['schedule' => $schedule, 'date' => $serviceDate]) }}"
+            title="Detalles del grupo e historial" aria-label="Detalles del grupo e historial">
         <i class="bi bi-clock-history"></i>
     </button>
-    @if ($schedule->status === 'Programada')
+    @if (in_array($schedule->status, ['Programada', 'Reprogramado']))
         <button type="button" class="btn btn-sm btn-outline-primary btnEditSchedule"
-                data-url="{{ route('admin.programming.schedules.edit', $schedule) }}"
+                data-url="{{ route('admin.programming.schedules.edit', ['schedule' => $schedule, 'date' => $serviceDate]) }}"
                 title="Editar" aria-label="Editar">
             <i class="bi bi-pencil-square"></i>
         </button>

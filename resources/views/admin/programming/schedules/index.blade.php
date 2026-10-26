@@ -8,8 +8,8 @@
     <div class="rsu-title-bar d-flex justify-content-between align-items-center flex-wrap" style="gap:10px">
         <h1 class="rsu-title m-0"><span class="rsu-title-ico"><i class="bi bi-calendar2-week"></i></span> Lista de Programaciones</h1>
         <div class="d-flex flex-wrap" style="gap:8px">
-            <button type="button" id="btnScheduleHistoryAll" class="btn btn-outline-info" disabled aria-disabled="true" title="Disponible en una siguiente entrega"><i class="bi bi-clock-history"></i> Historial</button>
-            <button type="button" id="btnProgramaMasiva" class="btn btn-outline-primary" disabled aria-disabled="true" title="Disponible en una siguiente entrega"><i class="bi bi-calendar-range"></i> Programación masiva</button>
+            <button type="button" id="btnScheduleHistoryAll" class="btn btn-outline-info"><i class="bi bi-clock-history"></i> Historial</button>
+            <button type="button" id="btnProgramaMasiva" class="btn btn-outline-primary"><i class="bi bi-calendar-range"></i> Programación masiva</button>
             <button type="button" id="btnNuevaPrograma" class="btn rsu-btn-new"><i class="bi bi-plus-circle"></i> Nueva programación</button>
         </div>
     </div>
@@ -21,6 +21,9 @@
     <link rel="stylesheet" href="{{ asset('css/custom-listados.css') }}">
     <link rel="stylesheet" href="{{ asset('css/custom.css') }}">
     <style>
+        #formModal .modal-dialog, #historyModal .modal-dialog { height:calc(100% - 3.5rem); }
+        #formModal .modal-content, #historyModal .modal-content { max-height:100%; overflow:hidden; }
+        #formModal .modal-body, #historyModal .modal-body { overflow-y:auto; min-height:0; overscroll-behavior:contain; }
         .btn-modal-cancelar { background:#edf2f7; color:#2b549a; border-radius:8px; padding:8px 18px; }
         .btn-modal-guardar { background:#38bdf8; color:#fff; border-radius:8px; padding:8px 22px; }
         #formModal .select2-container { width:100% !important; }
@@ -45,7 +48,7 @@
 @stop
 
 @section('content')
-    <div class="alert alert-info small">Valide la disponibilidad antes de guardar. Las vacaciones pendientes se muestran como advertencia; las aprobadas, feriados, inasistencias y cruces de personal o vehículos bloquean la programación.</div>
+    <div class="alert alert-info small">Valide la disponibilidad antes de guardar. Las vacaciones pendientes se muestran como advertencia; las aprobadas, feriados, inasistencias y cruces de personal o vehículos omiten únicamente los días afectados; los demás días sí se programan.</div>
     <div class="card">
         <div class="card-body">
             <div class="row g-2 align-items-end mb-3 schedule-list-filters">
@@ -87,7 +90,7 @@
         </div>
     </div>
     <div class="modal fade" id="formModal" data-bs-backdrop="static" tabindex="-1" aria-labelledby="formModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl"><div class="modal-content">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="formModalLabel">Nueva programación</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
@@ -96,9 +99,9 @@
         </div></div>
     </div>
     <div class="modal fade" id="historyModal" tabindex="-1" aria-labelledby="historyModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg"><div class="modal-content">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="historyModalLabel">Historial de cambios</h5>
+                <h5 class="modal-title" id="historyModalLabel">Detalles del grupo e historial</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
             <div class="modal-body"></div>
@@ -163,6 +166,11 @@ $(function () {
         $.get(url).done(function (html) {
             destroySearches();
             formBody.html(html);
+            formBody.find('[data-change-key]').each(function () {
+                const select = $(this);
+                select.data('initial-values', JSON.stringify([].concat(select.val() || []).sort()));
+                select.data('initial-label', select.find('option:selected').map(function () { return $(this).text(); }).get().join(', '));
+            });
             $('#formModalLabel').text(title);
             formModal.show();
         }).fail(function (xhr) {
@@ -175,8 +183,9 @@ $(function () {
         if (!$.fn.select2) return;
         $('#formModal .schedule-select2').each(function () {
             const select = $(this);
+            if (select.hasClass('select2-hidden-accessible')) return;
             select.select2({
-                dropdownParent: formBody,
+                dropdownParent: $(formModalElement),
                 width: '100%',
                 placeholder: select.prop('multiple') ? 'Seleccione uno o varios' : 'Buscar grupo o personal',
                 closeOnSelect: !select.prop('multiple')
@@ -184,11 +193,15 @@ $(function () {
         });
     }
     $(formModalElement).on('shown.bs.modal', initSelects).on('hidden.bs.modal', function () {
+        holidayVersion++;
+        invalidateAvailability();
         destroySearches();
         formBody.empty();
     });
 
+    let availabilityVersion = 0;
     function invalidateAvailability() {
+        availabilityVersion++;
         $('#availabilityToken').val('');
         $('#btnGuardarSchedule').prop('disabled', true);
         $('#scheduleAvailability').addClass('d-none').removeClass('alert-success alert-warning alert-danger').empty();
@@ -224,6 +237,73 @@ $(function () {
         });
     });
 
+    $(document).on('input change', '#frmSchedule .schedule-input', function () {
+        const body = $('#dayChanges');
+        if (!body.length) return;
+        body.empty();
+        const labels = {turno:'Turno', vehiculo:'Vehículo', conductor:'Conductor', ayudantes:'Ayudantes'};
+        $('#frmSchedule [data-change-key]').each(function () {
+            const select = $(this);
+            if (JSON.stringify([].concat(select.val() || []).sort()) === select.data('initial-values')) return;
+            const field = select.data('change-key');
+            const row = $('<tr>');
+            $('<td>').text(labels[field]).appendTo(row);
+            $('<td>').text(select.data('initial-label')).appendTo(row);
+            $('<td>').text(select.find('option:selected').map(function () { return $(this).text(); }).get().join(', ')).appendTo(row);
+            $('<td>').text($('#frmSchedule [name="reasons[' + field + ']"]').val() || 'Motivo pendiente').appendTo(row);
+            body.append(row);
+        });
+        if (!body.children().length) body.append('<tr><td colspan="4" class="text-muted">Todavía no hay cambios.</td></tr>');
+    });
+
+    $(document).on('change', '#massShiftFilter, .mass-group-check', function () {
+        const shift = $('#massShiftFilter').val();
+        $('.mass-group').each(function () {
+            const card = $(this);
+            const visible = !shift || String(card.data('shift')) === shift;
+            card.toggleClass('d-none', !visible);
+            const checkbox = card.find('.mass-group-check');
+            checkbox.prop('disabled', !visible);
+            card.find('.mass-crew').prop('disabled', !visible || !checkbox.prop('checked'));
+        });
+        invalidateAvailability();
+    });
+    let holidayVersion = 0;
+    $(document).on('change', '#schedule_start_date, #schedule_end_date', function () {
+        if (!$('#massHolidays').length) return;
+        const version = ++holidayVersion;
+        const start = $('#schedule_start_date').val();
+        const end = $('#schedule_end_date').val();
+        $('#holidaysConfigured').val('0');
+        const container = $('#massHolidays').empty();
+        if (!start || !end || start > end) {
+            $('#btnValidateAvailability').prop('disabled', false);
+            container.text('Seleccione un rango de fechas válido.');
+            return;
+        }
+        container.text('Cargando feriados…');
+        $('#btnValidateAvailability').prop('disabled', true);
+        $.get(@json(route('admin.programming.schedules.holidays')), {start_date:start, end_date:end})
+            .done(function (holidays) {
+                if (version !== holidayVersion) return;
+                container.empty();
+                holidays.forEach(holiday => {
+                    const label = $('<label class="d-block">');
+                    $('<input type="checkbox" name="holiday_ids[]" class="schedule-input" checked>')
+                        .val(holiday.id).appendTo(label);
+                    label.append(document.createTextNode(' ' + holiday.date.substring(0,10).split('-').reverse().join('/') + ' · ' + holiday.description));
+                    container.append(label);
+                });
+                if (!holidays.length) container.text('No hay feriados activos en este rango.');
+                $('#holidaysConfigured').val('1');
+            }).fail(function () {
+                if (version !== holidayVersion) return;
+                container.text('No se pudieron cargar los feriados. Se omitirán todos los feriados activos al validar.');
+            }).always(function () {
+                if (version === holidayVersion) $('#btnValidateAvailability').prop('disabled', false);
+            });
+    });
+
     $('#btnScheduleHistoryAll').on('click', function () {
         $('#historyModal .modal-body').html('<div class="text-center p-4">Cargando historial…</div>');
         $.get(@json(route('admin.programming.schedules.history.all'))).done(function (html) {
@@ -253,6 +333,7 @@ $(function () {
     }
 
     $(document).on('click', '#btnValidateAvailability', function () {
+        const version = ++availabilityVersion;
         const form = $('#frmSchedule');
         const button = $(this);
         const errors = $('#scheduleErrors').empty().addClass('d-none');
@@ -263,27 +344,28 @@ $(function () {
         $.ajax({
             url: @json(route('admin.programming.schedules.availability')),
             type: 'POST',
-            data: form.serialize(),
+            data: form.serializeArray().filter(field => field.name !== '_method'),
             headers: {Accept:'application/json'}
         }).done(function (result) {
+            if (version !== availabilityVersion) return;
             $('#availabilityToken').val(result.token);
             $('#btnGuardarSchedule').prop('disabled', false);
             const warnings = result.warnings || [];
-            message.removeClass('alert-info').addClass(warnings.length ? 'alert-warning' : 'alert-success').empty();
-            if (warnings.length) {
-                $('<small class="d-block text-muted mb-2">').text('Se revisaron ' + result.service_days + ' días de servicio · ' + result.program_count + ' programación(es).').appendTo(message);
-            } else {
-                $('<div>').text(result.message + ' Días de servicio: ' + result.service_days + '. Programaciones: ' + result.program_count + '.').appendTo(message);
-            }
+            const omissions = result.omissions || [];
+            message.removeClass('alert-info').addClass(warnings.length || omissions.length ? 'alert-warning' : 'alert-success').empty();
+            $('<div>').text(result.message + ' Días a programar: ' + result.service_days + '. Días omitidos: ' + result.skipped_days + '.').appendTo(message);
+            appendMessageSection(message, 'Días que no se programarán:', omissions);
             appendMessageSection(message, 'Advertencias (no bloquean):', warnings);
             appendMessageSection(message, 'Sugerencias:', result.suggestions || []);
         }).fail(function (xhr) {
+            if (version !== availabilityVersion) return;
             const problems = xhr.responseJSON?.conflicts || (xhr.responseJSON?.errors
                 ? Object.values(xhr.responseJSON.errors).flat()
                 : [xhr.responseJSON?.message || 'No se pudo validar la disponibilidad.']);
             const warnings = xhr.responseJSON?.warnings || [];
             message.removeClass('alert-info alert-warning').addClass('alert-danger').empty();
             appendMessageSection(message, 'Hay errores que corregir:', problems);
+            appendMessageSection(message, 'Días que no se programarán:', xhr.responseJSON?.omissions || []);
             appendMessageSection(message, 'Sugerencias:', xhr.responseJSON?.suggestions || []);
             appendMessageSection(message, 'Advertencias (no bloquean la programación):', warnings, 'schedule-message-warning');
         }).always(function () {
@@ -303,11 +385,14 @@ $(function () {
         }).done(function (result) {
             formModal.hide();
             table.ajax.reload(null, false);
-            if (result.warnings?.length) {
-                Swal.fire('Programación guardada con advertencia', result.message + ' Se detectaron solicitudes de vacaciones pendientes.', 'warning');
-            } else {
-                Swal.fire('Éxito', result.message, 'success');
-            }
+            const details = [...(result.omissions || []), ...(result.warnings || [])];
+            const counts = result.service_days !== undefined
+                ? ' Días programados: ' + result.service_days + '. Días omitidos: ' + result.skipped_days + '.' : '';
+            Swal.fire({
+                title: details.length ? 'Programación guardada con avisos' : 'Éxito',
+                text: result.message + counts + (details.length ? '\n' + details.join('\n') : ''),
+                icon: details.length ? 'warning' : 'success'
+            });
         }).fail(function (xhr) {
             const problems = xhr.responseJSON?.conflicts || (xhr.responseJSON?.errors
                 ? Object.values(xhr.responseJSON.errors).flat()
@@ -315,6 +400,7 @@ $(function () {
             const warnings = xhr.responseJSON?.warnings || [];
             const message = $('#scheduleAvailability').removeClass('d-none alert-info alert-success alert-warning').addClass('alert-danger').empty();
             appendMessageSection(message, 'Hay errores que corregir:', problems);
+            appendMessageSection(message, 'Días que no se programarán:', xhr.responseJSON?.omissions || []);
             appendMessageSection(message, 'Sugerencias:', xhr.responseJSON?.suggestions || []);
             appendMessageSection(message, 'Advertencias (no bloquean la programación):', warnings, 'schedule-message-warning');
             $('#availabilityToken').val('');

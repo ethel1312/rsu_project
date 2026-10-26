@@ -5,20 +5,13 @@
     $selectedHelpers = old('helper_ids', $schedule?->helper_ids ?? []);
 @endphp
 <div class="alert alert-danger d-none" id="scheduleErrors" role="alert"></div>
+@if ($schedule)
+    <input type="hidden" name="schedule_id" value="{{ $schedule->id }}">
+@endif
 <input type="hidden" name="mode" value="{{ $mode }}">
 <input type="hidden" name="availability_token" id="availabilityToken" value="">
 <div class="row">
-    @if ($mode === 'mass')
-        <div class="col-12 mb-3">
-            <label for="schedule_group_ids" class="font-weight-bold">Grupos de personal *</label>
-            <select class="form-control schedule-input schedule-select2" name="group_ids[]" id="schedule_group_ids" multiple required>
-                @foreach ($groups as $group)
-                    <option value="{{ $group->id }}">{{ $group->name }} · {{ $group->shift?->name }} · {{ $group->vehicle?->plate }}</option>
-                @endforeach
-            </select>
-            <small class="text-muted">Se generará una programación por cada grupo, usando su conductor, ayudantes y días configurados.</small>
-        </div>
-    @else
+    @if ($mode === 'individual')
         <div class="col-md-6 mb-3">
             <label for="schedule_group_id" class="font-weight-bold">Grupo de personal *</label>
             <select class="form-control schedule-input schedule-select2" name="group_id" id="schedule_group_id" required>
@@ -87,11 +80,7 @@
             </fieldset>
         </div>
     @else
-        <div class="col-12">
-            <div class="alert alert-info small mb-0">
-                Cada grupo se programará con su conductor, ayudantes y días de trabajo guardados en la plantilla. Si necesita cambiarlos, use la programación individual.
-            </div>
-        </div>
+        @include('admin.programming.schedules.template.mass-groups')
     @endif
 </div>
 

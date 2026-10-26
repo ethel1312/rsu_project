@@ -1,6 +1,15 @@
 <div class="schedule-history">
     @if ($schedule)
         <p class="mb-3"><strong>{{ $schedule->group_name }}</strong> · {{ $schedule->start_date->format('d/m/Y') }} – {{ $schedule->end_date->format('d/m/Y') }}</p>
+        <div class="row mb-3">
+            <div class="col-md-6"><strong>Zona:</strong> {{ $schedule->zone_name }}<br>
+                <strong>Turno:</strong> {{ $schedule->shift_name }} ({{ substr($schedule->shift_start_time, 0, 5) }}–{{ substr($schedule->shift_end_time, 0, 5) }})<br>
+                <strong>Vehículo:</strong> {{ $schedule->vehicle_label }}</div>
+            <div class="col-md-6"><strong>Conductor:</strong> {{ $schedule->driver_name }}<br>
+                <strong>Ayudantes:</strong> {{ implode(', ', $schedule->helper_names ?? []) }}<br>
+                <strong>Estado:</strong> {{ $schedule->status }}</div>
+        </div>
+        <h6>Historial de la programación y sus reprogramaciones</h6>
     @else
         <p class="mb-3"><strong>Últimos cambios registrados</strong></p>
     @endif
@@ -13,7 +22,7 @@
                 <tbody>
                     @foreach ($histories as $history)
                         @php
-                            $labels = ['created' => 'Creada', 'created_mass' => 'Creada en lote', 'updated' => 'Modificada', 'finished' => 'Finalizada', 'deleted' => 'Eliminada'];
+                            $labels = ['created' => 'Creada', 'created_mass' => 'Creada en lote', 'rescheduled' => 'Reprogramada', 'updated' => 'Modificada', 'finished' => 'Finalizada', 'deleted' => 'Eliminada'];
                             $before = $history->before_data ?? [];
                             $after = $history->after_data ?? [];
                             $keys = array_unique(array_merge(array_keys($before), array_keys($after)));
