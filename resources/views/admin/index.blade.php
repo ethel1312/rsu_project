@@ -118,19 +118,19 @@
                             </div>
                         </div>
                         <div class="col-sm-6 mb-3">
-                            <div class="rsu-item">
+                            <a href="{{ route('admin.attendances.index') }}" class="rsu-item">
                                 <span class="rsu-tile"><i class="bi bi-clock"></i></span> Seguimiento de Asistencia
-                            </div>
+                            </a>
                         </div>
                         <div class="col-sm-6 mb-3">
-                            <div class="rsu-item">
+                            <a href="{{ route('admin.contracts.index') }}" class="rsu-item">
                                 <span class="rsu-tile is-sky"><i class="bi bi-file-earmark-text"></i></span> Gestión de Contratos
-                            </div>
+                            </a>
                         </div>
                         <div class="col-sm-6 mb-3">
-                            <div class="rsu-item">
+                            <a href="{{ route('admin.vacations.index') }}" class="rsu-item">
                                 <span class="rsu-tile is-gray"><i class="bi bi-umbrella"></i></span> Control de Vacaciones
-                            </div>
+                            </a>
                         </div>
                     </div>
 

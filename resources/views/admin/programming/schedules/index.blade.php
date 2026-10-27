@@ -8,8 +8,8 @@
     <div class="rsu-title-bar d-flex justify-content-between align-items-center flex-wrap" style="gap:10px">
         <h1 class="rsu-title m-0"><span class="rsu-title-ico"><i class="bi bi-calendar2-week"></i></span> Lista de Programaciones</h1>
         <div class="d-flex flex-wrap" style="gap:8px">
-            <button type="button" id="btnScheduleHistoryAll" class="btn btn-outline-info" disabled aria-disabled="true" title="Disponible en una siguiente entrega"><i class="bi bi-clock-history"></i> Historial</button>
-            <button type="button" id="btnProgramaMasiva" class="btn btn-outline-primary" disabled aria-disabled="true" title="Disponible en una siguiente entrega"><i class="bi bi-calendar-range"></i> Programación masiva</button>
+            <button type="button" id="btnScheduleHistoryAll" class="btn btn-outline-info"><i class="bi bi-clock-history"></i> Historial</button>
+            <button type="button" id="btnProgramaMasiva" class="btn btn-outline-primary"><i class="bi bi-calendar-range"></i> Programación masiva</button>
             <button type="button" id="btnNuevaPrograma" class="btn rsu-btn-new"><i class="bi bi-plus-circle"></i> Nueva programación</button>
         </div>
     </div>
@@ -23,6 +23,9 @@
     <style>
         .btn-modal-cancelar { background:#edf2f7; color:#2b549a; border-radius:8px; padding:8px 18px; }
         .btn-modal-guardar { background:#38bdf8; color:#fff; border-radius:8px; padding:8px 22px; }
+        #formModal .modal-dialog { margin:.5rem auto; }
+        #formModal .modal-content { display:flex; flex-direction:column; max-height:calc(100vh - 1rem); }
+        #formModal .modal-body { min-height:0; overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; }
         #formModal .select2-container { width:100% !important; }
         #formModal .select2-selection { min-height:38px; }
         #formModal .select2-selection--multiple { align-items:center; gap:.375rem; }
@@ -31,9 +34,26 @@
         #formModal .schedule-group-summary small { color:#6b7388; font-size:.72rem; }
         #formModal .schedule-group-summary strong { color:#12206b; font-size:.88rem; }
         #DataTable td { vertical-align:middle; }
+        #DataTable .schedule-actions-row { flex-wrap:nowrap !important; min-width:max-content; white-space:nowrap; }
+        #DataTable .schedule-actions-row .frmDeleteSchedule { display:inline-flex !important; flex:0 0 auto; margin:0 !important; }
+        #DataTable .schedule-action { flex:0 0 40px; }
+        #DataTable .schedule-action {
+            display:inline-flex; align-items:center; justify-content:center;
+            width:40px; height:40px; padding:0; border-radius:.375rem;
+            transition:background-color .2s ease, color .2s ease, border-color .2s ease;
+        }
+        #DataTable .schedule-action-history { background:#e5f5fb; border:1px solid #c7e8f3; color:#137b9b; }
+        #DataTable .schedule-action-history:hover { background:#1599bc; border-color:#1599bc; color:#fff; }
+        #DataTable .schedule-action-edit { background:#e3edff; border:1px solid #d1e0ff; color:#1746a2; }
+        #DataTable .schedule-action-edit:hover { background:#2563eb; border-color:#2563eb; color:#fff; }
+        #DataTable .schedule-action-finish { background:#e1f3e6; border:1px solid #c5e7cf; color:#198754; }
+        #DataTable .schedule-action-finish:hover { background:#198754; border-color:#198754; color:#fff; }
+        #DataTable .frmDeleteSchedule .schedule-action-delete { background:#ffe5e8; border:1px solid #ffd1d8; color:#c62843; }
+        #DataTable .frmDeleteSchedule .schedule-action-delete:hover { background:#dc3545; border-color:#dc3545; color:#fff; }
         #DataTable .schedule-status, #DataTable .schedule-shift { display:inline-block; min-width:84px; padding:.45rem .7rem; border-radius:.5rem; font-weight:600; }
         #DataTable .schedule-status-planned { color:#12647a; background:#d8f2f8; }
         #DataTable .schedule-status-finished { color:#166534; background:#dcf2e1; }
+        #DataTable .schedule-status-rescheduled { color:#7145a5; background:#eee5fa; }
         #DataTable .schedule-shift { color:#154a83; background:#e7f2ff; }
         #DataTable .schedule-vehicle { display:inline-block; padding:.5rem .65rem; border:1px solid #dfe6f5; border-radius:.5rem; color:#17346b; background:#f8faff; }
         #DataTable .schedule-helper { display:block; margin:.15rem 0; padding:.2rem .45rem; border-radius:.25rem; color:#43516a; background:#edf1f6; }
@@ -45,7 +65,7 @@
 @stop
 
 @section('content')
-    <div class="alert alert-info small">Valide la disponibilidad antes de guardar. Las vacaciones pendientes se muestran como advertencia; las aprobadas, feriados, inasistencias y cruces de personal o vehículos bloquean la programación.</div>
+    <div class="alert alert-info small">Valide antes de guardar. Las fechas con vacaciones aprobadas, feriados, inasistencias o cruces se omitirán; las demás fechas disponibles sí se programarán. Las solicitudes pendientes se mostrarán como advertencia.</div>
     <div class="card">
         <div class="card-body">
             <div class="row g-2 align-items-end mb-3 schedule-list-filters">
@@ -209,6 +229,8 @@ $(function () {
         $('#scheduleSummaryGroup, #scheduleSummaryZone, #scheduleSummaryShift, #scheduleSummaryVehicle').text('Cargando…');
         const url = @json(route('admin.programming.schedules.groups.data', ':id')).replace(':id', groupId);
         $.get(url).done(function (data) {
+            if ($('#schedule_shift_id').length) $('#schedule_shift_id').val(String(data.shift_id)).trigger('change.select2');
+            if ($('#schedule_vehicle_id').length) $('#schedule_vehicle_id').val(String(data.vehicle_id)).trigger('change.select2');
             $('#schedule_driver_id').val(String(data.driver_id)).trigger('change.select2');
             $('#schedule_helper_ids').val(data.helper_ids.map(String)).trigger('change.select2');
             $('input[name="days_of_week[]"]').each(function () {
@@ -252,6 +274,13 @@ $(function () {
         container.append(section);
     }
 
+    function skippedMessages(items) {
+        return (items || []).map(item => {
+            const group = item.group_name ? item.group_name + ': ' : '';
+            return group + item.reason + ' Fechas: ' + (item.dates || []).join(', ') + '.';
+        });
+    }
+
     $(document).on('click', '#btnValidateAvailability', function () {
         const form = $('#frmSchedule');
         const button = $(this);
@@ -263,28 +292,30 @@ $(function () {
         $.ajax({
             url: @json(route('admin.programming.schedules.availability')),
             type: 'POST',
-            data: form.serialize(),
+            data: form.serializeArray().filter(function (field) { return field.name !== '_method'; }),
             headers: {Accept:'application/json'}
         }).done(function (result) {
             $('#availabilityToken').val(result.token);
             $('#btnGuardarSchedule').prop('disabled', false);
             const warnings = result.warnings || [];
-            message.removeClass('alert-info').addClass(warnings.length ? 'alert-warning' : 'alert-success').empty();
-            if (warnings.length) {
-                $('<small class="d-block text-muted mb-2">').text('Se revisaron ' + result.service_days + ' días de servicio · ' + result.program_count + ' programación(es).').appendTo(message);
-            } else {
-                $('<div>').text(result.message + ' Días de servicio: ' + result.service_days + '. Programaciones: ' + result.program_count + '.').appendTo(message);
-            }
+            const skipped = result.skipped || [];
+            message.removeClass('alert-info').addClass(skipped.length || warnings.length ? 'alert-warning' : 'alert-success').empty();
+            $('<div>').text('Se revisaron ' + result.service_days + ' fechas de servicio: se programarán ' + result.available_service_days + ' y se omitirán ' + result.skipped_service_days + '.').appendTo(message);
+            appendMessageSection(message, 'Fechas que no se generarán:', skippedMessages(skipped));
             appendMessageSection(message, 'Advertencias (no bloquean):', warnings);
-            appendMessageSection(message, 'Sugerencias:', result.suggestions || []);
+            if (!skipped.length) appendMessageSection(message, 'Sugerencias:', result.suggestions || []);
         }).fail(function (xhr) {
             const problems = xhr.responseJSON?.conflicts || (xhr.responseJSON?.errors
                 ? Object.values(xhr.responseJSON.errors).flat()
-                : [xhr.responseJSON?.message || 'No se pudo validar la disponibilidad.']);
+                : [xhr.status === 404
+                    ? 'No se encontró la programación seleccionada. Actualiza la lista y vuelve a intentarlo.'
+                    : xhr.responseJSON?.message || 'No se pudo validar la disponibilidad.']);
             const warnings = xhr.responseJSON?.warnings || [];
+            const skipped = xhr.responseJSON?.skipped || [];
             message.removeClass('alert-info alert-warning').addClass('alert-danger').empty();
-            appendMessageSection(message, 'Hay errores que corregir:', problems);
-            appendMessageSection(message, 'Sugerencias:', xhr.responseJSON?.suggestions || []);
+            appendMessageSection(message, 'No se puede generar la programación:', problems);
+            appendMessageSection(message, 'Fechas que no se generarán:', skippedMessages(skipped));
+            if (!skipped.length) appendMessageSection(message, 'Sugerencias:', xhr.responseJSON?.suggestions || []);
             appendMessageSection(message, 'Advertencias (no bloquean la programación):', warnings, 'schedule-message-warning');
         }).always(function () {
             button.prop('disabled', false);
@@ -303,19 +334,28 @@ $(function () {
         }).done(function (result) {
             formModal.hide();
             table.ajax.reload(null, false);
-            if (result.warnings?.length) {
-                Swal.fire('Programación guardada con advertencia', result.message + ' Se detectaron solicitudes de vacaciones pendientes.', 'warning');
-            } else {
-                Swal.fire('Éxito', result.message, 'success');
-            }
+            const skipped = result.skipped || [];
+            const warnings = result.warnings || [];
+            const details = [result.message];
+            if (skipped.length) details.push('', 'Fechas omitidas:', ...skippedMessages(skipped).map(item => '• ' + item));
+            if (warnings.length) details.push('', 'Advertencias:', ...warnings.map(item => '• ' + item));
+            const hasNotices = skipped.length || warnings.length;
+            const isUpdate = String(form.find('[name="_method"]').val() || '').toUpperCase() === 'PUT';
+            Swal.fire({
+                title: skipped.length ? (isUpdate ? 'Programación actualizada parcialmente' : 'Programación generada parcialmente') : (warnings.length ? (isUpdate ? 'Programación actualizada con advertencias' : 'Programación con advertencias') : (isUpdate ? 'Programación actualizada' : 'Éxito')),
+                text: details.join('\n'),
+                icon: hasNotices ? 'warning' : 'success'
+            });
         }).fail(function (xhr) {
             const problems = xhr.responseJSON?.conflicts || (xhr.responseJSON?.errors
                 ? Object.values(xhr.responseJSON.errors).flat()
                 : [xhr.responseJSON?.message || 'No se pudo guardar la programación.']);
             const warnings = xhr.responseJSON?.warnings || [];
+            const skipped = xhr.responseJSON?.skipped || [];
             const message = $('#scheduleAvailability').removeClass('d-none alert-info alert-success alert-warning').addClass('alert-danger').empty();
-            appendMessageSection(message, 'Hay errores que corregir:', problems);
-            appendMessageSection(message, 'Sugerencias:', xhr.responseJSON?.suggestions || []);
+            appendMessageSection(message, 'No se pudo completar la programación:', problems);
+            appendMessageSection(message, 'Fechas que no se generarán:', skippedMessages(skipped));
+            if (!skipped.length) appendMessageSection(message, 'Sugerencias:', xhr.responseJSON?.suggestions || []);
             appendMessageSection(message, 'Advertencias (no bloquean la programación):', warnings, 'schedule-message-warning');
             $('#availabilityToken').val('');
         }).always(function () {

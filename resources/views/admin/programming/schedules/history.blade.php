@@ -1,6 +1,8 @@
 <div class="schedule-history">
     @if ($schedule)
         <p class="mb-3"><strong>{{ $schedule->group_name }}</strong> · {{ $schedule->start_date->format('d/m/Y') }} – {{ $schedule->end_date->format('d/m/Y') }}</p>
+    @elseif (!empty($historyTitle))
+        <p class="mb-3"><strong>{{ $historyTitle }}</strong></p>
     @else
         <p class="mb-3"><strong>Últimos cambios registrados</strong></p>
     @endif
@@ -13,7 +15,7 @@
                 <tbody>
                     @foreach ($histories as $history)
                         @php
-                            $labels = ['created' => 'Creada', 'created_mass' => 'Creada en lote', 'updated' => 'Modificada', 'finished' => 'Finalizada', 'deleted' => 'Eliminada'];
+                            $labels = ['created' => 'Creada', 'created_mass' => 'Creada en programación masiva', 'updated' => 'Modificada', 'split' => 'Separada para reprogramación', 'split_segment' => 'Segmento conservado', 'reprogrammed' => 'Reprogramada', 'finished' => 'Finalizada', 'deleted' => 'Eliminada'];
                             $before = $history->before_data ?? [];
                             $after = $history->after_data ?? [];
                             $keys = array_unique(array_merge(array_keys($before), array_keys($after)));

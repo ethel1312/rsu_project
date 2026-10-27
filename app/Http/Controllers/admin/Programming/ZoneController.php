@@ -35,11 +35,12 @@ class ZoneController extends Controller
                     return $z->created_at ? $z->created_at->format('d/m/Y H:i') : '-';
                 })
                 ->addColumn('actions', function ($z) {
-                    return '<div class="d-flex justify-content-center">'
-                        . '<button type="button" class="btn btn-sm btn-outline-primary btnEditar mr-1" data-id="' . $z->id . '" title="Editar"><i class="bi bi-pencil-square"></i></button>'
+                    return '<div class="d-flex justify-content-center" style="gap:6px">'
+                        . '<button type="button" class="btn btn-sm btn-zone-map btnVerMapaZona" data-map-url="' . route('admin.programming.zones.map-data', $z->id) . '" data-zone-name="' . e($z->name) . '" title="Ver mapa de la zona" aria-label="Ver mapa de la zona"><i class="bi bi-map"></i></button>'
+                        . '<button type="button" class="btn btn-sm btn-outline-primary btnEditar" data-id="' . $z->id . '" title="Editar"><i class="bi bi-pencil-square"></i></button>'
                         . '<form action="' . route('admin.programming.zones.destroy', $z->id) . '" method="POST" class="frmEliminar d-inline">'
                         . csrf_field() . method_field('DELETE')
-                        . '<button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar"><i class="bi bi-trash"></i></button>'
+                        . '<button type="submit" class="btn btn-sm btn-danger" title="Eliminar zona" aria-label="Eliminar zona"><i class="bi bi-trash3-fill"></i></button>'
                         . '</form>'
                         . '</div>';
                 })
@@ -50,9 +51,16 @@ class ZoneController extends Controller
         return view('admin.programming.zones.index');
     }
 
-    public function map()
+    public function map(Request $request)
     {
-        $mapZones = Zone::orderBy('name')->get()->map(function (Zone $zone) {
+        $selectedZone = null;
+        $zonesQuery = Zone::query()->orderBy('name');
+        if ($request->filled('zone_id')) {
+            $selectedZone = Zone::findOrFail($request->integer('zone_id'));
+            $zonesQuery->whereKey($selectedZone->id);
+        }
+
+        $mapZones = $zonesQuery->get()->map(function (Zone $zone) {
             $coordinates = $zone->coordinates;
             $valid = is_array($coordinates) && count($coordinates) >= 3;
             $points = [];
@@ -97,7 +105,50 @@ class ZoneController extends Controller
             ];
         })->values();
 
-        return view('admin.programming.zones.map', compact('mapZones'));
+        return view('admin.programming.zones.map', compact('mapZones', 'selectedZone'));
+    }
+
+    public function mapData(Zone $zone)
+    {
+        $coordinates = $zone->coordinates;
+        $valid = is_array($coordinates) && count($coordinates) >= 3;
+        $points = [];
+
+        if ($valid) {
+            foreach ($coordinates as $coordinate) {
+                if (!is_array($coordinate)
+                    || !isset($coordinate['lat'], $coordinate['lng'])
+                    || !is_numeric($coordinate['lat'])
+                    || !is_numeric($coordinate['lng'])) {
+                    $valid = false;
+                    break;
+                }
+
+                $latitude = (float) $coordinate['lat'];
+                $longitude = (float) $coordinate['lng'];
+                if (!is_finite($latitude) || !is_finite($longitude)
+                    || abs($latitude) > 90 || abs($longitude) > 180) {
+                    $valid = false;
+                    break;
+                }
+
+                $points[] = [$latitude, $longitude];
+            }
+        }
+
+        if ($valid && count(array_unique(array_map('json_encode', $points))) < 3) {
+            $valid = false;
+        }
+
+        return response()->json([
+            'name' => $zone->name,
+            'district' => $zone->district,
+            'province' => $zone->province,
+            'department' => $zone->department,
+            'status' => $zone->status,
+            'coordinates' => $valid ? $points : [],
+            'has_valid_coordinates' => $valid,
+        ]);
     }
 
     public function create()

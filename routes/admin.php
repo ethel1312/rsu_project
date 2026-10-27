@@ -90,6 +90,9 @@ Route::get(
 Route::get('zones/map', [ZoneController::class, 'map'])
     ->middleware('auth')
     ->name('admin.programming.zones.map');
+Route::get('zones/{zone}/map-data', [ZoneController::class, 'mapData'])
+    ->middleware('auth')
+    ->name('admin.programming.zones.map-data');
 Route::resource('zones', ZoneController::class)->names('admin.programming.zones');
 
 //Turnos
@@ -118,6 +121,7 @@ Route::middleware('auth')->prefix('programming/schedules')->name('admin.programm
     Route::get('/create/mass', [ProgrammingScheduleController::class, 'createMass'])->name('create-mass');
     Route::get('/create', [ProgrammingScheduleController::class, 'create'])->name('create');
     Route::get('/groups/{personnelGroup}/data', [ProgrammingScheduleController::class, 'groupData'])->name('groups.data');
+    Route::get('/groups/{personnelGroup}/details', [ProgrammingScheduleController::class, 'groupDetails'])->name('groups.details');
     Route::get('/history', [ProgrammingScheduleController::class, 'allHistory'])->name('history.all');
     Route::post('/availability', [ProgrammingScheduleController::class, 'validateAvailability'])->name('availability');
     Route::post('/', [ProgrammingScheduleController::class, 'store'])->name('store');

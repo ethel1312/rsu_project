@@ -12,7 +12,7 @@
         </h1>
 
         <div class="d-flex flex-wrap" style="gap: 8px;">
-            <a href="{{ route('admin.programming.zones.map') }}" class="btn btn-outline-primary">
+            <a href="{{ route('admin.programming.zones.map') }}" class="btn btn-zone-map">
                 <i class="bi bi-map"></i> Ver mapa de zonas
             </a>
             <button type="button" id="btnNuevo" class="btn rsu-btn-new">
@@ -32,6 +32,23 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
 
     <style>
+        .btn-zone-map {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: .45rem;
+            background: #fff3cd !important;
+            border: 1px solid #ffe69c !important;
+            color: #805b00 !important;
+            transition: background-color .2s ease, color .2s ease, border-color .2s ease;
+        }
+        .btn-zone-map:hover {
+            background: #ffe08a !important;
+            border-color: #f2c94c !important;
+            color: #634600 !important;
+        }
+        #DataTable .btn-zone-map { width: 40px; height: 40px; padding: 0; border-radius: .375rem; }
+        #zoneMapModalCanvas { height: min(65vh, 620px); min-height: 360px; border-radius: .5rem; background: #f1f5f9; }
         .badge-active { background-color: #d4edda; color: #155724; padding: 5px 9px; border-radius: 4px; font-size: 12px; }
         .badge-inactive { background-color: #f8d7da; color: #721c24; padding: 5px 9px; border-radius: 4px; font-size: 12px; }
         
@@ -60,6 +77,21 @@
                     </tr>
                 </thead>
             </table>
+        </div>
+    </div>
+
+    <div class="modal fade" id="zoneMapModal" tabindex="-1" aria-labelledby="zoneMapModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="zoneMapModalLabel">Mapa de zona</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="zoneMapModalMessage" class="alert alert-info d-none" role="status"></div>
+                    <div id="zoneMapModalCanvas" aria-label="Mapa del perímetro de la zona"></div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -103,6 +135,55 @@
                 language: {
                     url: 'https://cdn.datatables.net/plug-ins/1.10.16/i18n/Spanish.json'
                 }
+            });
+
+            let zonePreviewMap = null;
+            let zonePreviewPolygon = null;
+            const zoneMapModal = document.getElementById('zoneMapModal');
+
+            $(document).on('click', '.btnVerMapaZona', function () {
+                const button = $(this);
+                const modal = bootstrap.Modal.getOrCreateInstance(zoneMapModal);
+                const mapContainer = document.getElementById('zoneMapModalCanvas');
+                const message = $('#zoneMapModalMessage');
+                $('#zoneMapModalLabel').text('Mapa: ' + button.data('zone-name'));
+                message.addClass('d-none').removeClass('alert-warning alert-danger').text('');
+                mapContainer.classList.remove('d-none');
+                modal.show();
+                button.prop('disabled', true);
+
+                $.get(button.data('map-url')).done(function (zone) {
+                    if (!zone.has_valid_coordinates) {
+                        mapContainer.classList.add('d-none');
+                        message.removeClass('d-none').addClass('alert-warning').text('Esta zona no tiene un perímetro válido para mostrar. Edite sus coordenadas y vuelva a guardarlas.');
+                        return;
+                    }
+
+                    if (!zonePreviewMap) {
+                        zonePreviewMap = L.map(mapContainer).setView(zone.coordinates[0], 14);
+                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                            maxZoom: 19,
+                            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                        }).addTo(zonePreviewMap);
+                    }
+                    if (zonePreviewPolygon) zonePreviewMap.removeLayer(zonePreviewPolygon);
+                    zonePreviewPolygon = L.polygon(zone.coordinates, {
+                        color: '#2563eb',
+                        fillColor: '#38bdf8',
+                        fillOpacity: .28,
+                        weight: 3
+                    }).addTo(zonePreviewMap);
+                    zonePreviewPolygon.bindPopup('<strong>' + $('<div>').text(zone.name).html() + '</strong>').openPopup();
+                    window.setTimeout(function () {
+                        zonePreviewMap.invalidateSize();
+                        zonePreviewMap.fitBounds(zonePreviewPolygon.getBounds(), {padding:[30,30], maxZoom:16});
+                    }, 250);
+                }).fail(function (xhr) {
+                    mapContainer.classList.add('d-none');
+                    message.removeClass('d-none').addClass('alert-danger').text(xhr.responseJSON?.message || 'No se pudo cargar el mapa de esta zona.');
+                }).always(function () {
+                    button.prop('disabled', false);
+                });
             });
 
             // Solucion al error de mapa al editar
