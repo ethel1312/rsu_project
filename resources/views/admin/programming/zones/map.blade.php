@@ -1,12 +1,12 @@
 @extends('adminlte::page')
 
-@section('title', 'Mapa de zonas')
+@section('title', $selectedZone ? 'Mapa de zona' : 'Mapa de zonas')
 
 @section('content_header')
     <div class="rsu-title-bar d-flex justify-content-between align-items-center flex-wrap" style="gap: 12px;">
         <h1 class="rsu-title m-0">
             <span class="rsu-title-ico"><i class="bi bi-map"></i></span>
-            Mapa de zonas
+            {{ $selectedZone ? 'Mapa: '.$selectedZone->name : 'Mapa de zonas' }}
         </h1>
         <a href="{{ route('admin.programming.zones.index') }}" class="btn btn-outline-secondary">
             <i class="bi bi-arrow-left"></i> Volver a zonas
@@ -43,12 +43,12 @@
     @endif
 
     <div class="row">
-        <div class="col-lg-9 order-lg-2">
+        <div class="{{ $selectedZone ? 'col-12' : 'col-lg-9 order-lg-2' }}">
             <div class="card">
                 <div class="card-header d-flex align-items-center flex-wrap" style="gap: 8px;">
-                    <p class="mb-0 mr-auto">Todas las zonas registradas, activas e inactivas.</p>
+                    <p class="mb-0 mr-auto">{{ $selectedZone ? 'Perímetro de la zona seleccionada.' : 'Todas las zonas registradas, activas e inactivas.' }}</p>
                     <button type="button" id="fitAllZones" class="btn btn-sm btn-outline-primary" @disabled(!$mapZones->contains('has_valid_coordinates', true))>
-                        <i class="bi bi-arrows-fullscreen"></i> Ver todas
+                        <i class="bi bi-arrows-fullscreen"></i> {{ $selectedZone ? 'Ver zona' : 'Ver todas' }}
                     </button>
                 </div>
                 <div class="card-body p-2">
@@ -56,6 +56,7 @@
                 </div>
             </div>
         </div>
+        @unless ($selectedZone)
         <div class="col-lg-3 order-lg-1">
             <div class="card">
                 <div class="card-header"><strong><i class="bi bi-funnel"></i> Filtros de ubicación</strong></div>
@@ -102,6 +103,7 @@
                 <div class="card-footer small text-muted">Seleccione una zona para acercarse. Las zonas inactivas tienen borde discontinuo.</div>
             </div>
         </div>
+        @endunless
     </div>
 @stop
 
@@ -110,6 +112,7 @@
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             const zones = {{ Illuminate\Support\Js::from($mapZones) }};
+            const selectedZoneId = {{ Illuminate\Support\Js::from($selectedZone?->id) }};
             const map = L.map('zonesMap').setView([-6.7714, -79.8409], 13);
             const allZones = L.featureGroup().addTo(map);
             const colors = ['#2563eb', '#9333ea', '#059669', '#ea580c', '#db2777', '#0891b2', '#a16207', '#4f46e5'];
@@ -175,6 +178,7 @@
             const locationFields = ['department', 'province', 'district'];
 
             function selectedLocations() {
+                if (selectedZoneId) return Object.fromEntries(locationFields.map(field => [field, '']));
                 return Object.fromEntries(locationFields.map(field => [field, document.getElementById('filter-' + field).value]));
             }
 
@@ -196,10 +200,14 @@
                         pointCount += zone.coordinates.length;
                     }
                 });
-                document.getElementById('foundZones').textContent = matching.length;
-                document.getElementById('activeZones').textContent = matching.filter(zone => zone.status).length;
-                document.getElementById('totalZonePoints').textContent = pointCount;
-                document.getElementById('noMatchingZones').hidden = matching.length > 0 || zones.length === 0;
+                const foundZones = document.getElementById('foundZones');
+                const activeZones = document.getElementById('activeZones');
+                const totalZonePoints = document.getElementById('totalZonePoints');
+                const noMatchingZones = document.getElementById('noMatchingZones');
+                if (foundZones) foundZones.textContent = matching.length;
+                if (activeZones) activeZones.textContent = matching.filter(zone => zone.status).length;
+                if (totalZonePoints) totalZonePoints.textContent = pointCount;
+                if (noMatchingZones) noMatchingZones.hidden = matching.length > 0 || zones.length === 0;
                 document.getElementById('fitAllZones').disabled = allZones.getLayers().length === 0;
                 if (allZones.getLayers().length === 0) map.setView([-6.7714, -79.8409], 13);
                 else fitAll();
@@ -218,17 +226,19 @@
                 }
             }
 
-            locationFields.forEach(function (field, index) {
-                document.getElementById('filter-' + field).addEventListener('change', function () {
-                    updateDependentFilters(index);
+            if (!selectedZoneId) {
+                locationFields.forEach(function (field, index) {
+                    document.getElementById('filter-' + field).addEventListener('change', function () {
+                        updateDependentFilters(index);
+                        refreshMap();
+                    });
+                });
+                document.getElementById('clearZoneFilters').addEventListener('click', function () {
+                    locationFields.forEach(field => { document.getElementById('filter-' + field).value = ''; });
+                    updateDependentFilters(0);
                     refreshMap();
                 });
-            });
-            document.getElementById('clearZoneFilters').addEventListener('click', function () {
-                locationFields.forEach(field => { document.getElementById('filter-' + field).value = ''; });
-                updateDependentFilters(0);
-                refreshMap();
-            });
+            }
             document.querySelectorAll('.zone-legend-item:not(:disabled)').forEach(function (entry) {
                 entry.addEventListener('click', function () {
                     const polygon = polygons.get(Number(entry.dataset.zoneId));

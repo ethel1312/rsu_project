@@ -4,12 +4,12 @@ namespace App\Http\Controllers\admin\Programming;
 
 use App\Http\Controllers\Controller;
 use App\Models\Employees\Employee;
-use App\Models\Vehicle;
 use App\Models\Programming\Holiday;
 use App\Models\Programming\PersonnelGroup;
 use App\Models\Programming\ProgrammingSchedule;
 use App\Models\Programming\ProgrammingScheduleHistory;
 use App\Models\Programming\Shift;
+use App\Models\Vehicle;
 use App\Models\Programming\Zone;
 use App\Services\Programming\ScheduleAvailabilityService;
 use Carbon\Carbon;
@@ -48,18 +48,17 @@ class ProgrammingScheduleController extends Controller
                 $weekdays = array_map('intval', $schedule->days_of_week ?? []);
                 $rows = collect();
                 foreach (CarbonPeriod::create($from, $to) as $date) {
-                    if (! in_array($date->dayOfWeekIso, $weekdays, true)
-                        || in_array($date->toDateString(), $schedule->excluded_dates ?? [], true)) continue;
-
+                    if (! in_array($date->dayOfWeekIso, $weekdays, true)) continue;
                     $serviceDate = $date->toDateString();
                     $actions = view('admin.programming.schedules.template.actions', compact('schedule', 'serviceDate'))->render();
+
                     $rows->push([
                         'date' => $date->format('d/m/Y'),
                         'date_sort' => $date->toDateString(),
                         'status_badge' => $schedule->status === 'Finalizada'
                             ? '<span class="badge schedule-status schedule-status-finished">Finalizada</span>'
                             : ($schedule->status === 'Reprogramado'
-                                ? '<span class="badge schedule-status bg-warning">Reprogramado</span>'
+                                ? '<span class="badge schedule-status schedule-status-rescheduled">Reprogramada</span>'
                                 : '<span class="badge schedule-status schedule-status-planned">Programada</span>'),
                         'zone_name' => $schedule->zone_name,
                         'shift_html' => '<span class="badge schedule-shift">'.e($schedule->shift_name).'</span>',
@@ -94,16 +93,6 @@ class ProgrammingScheduleController extends Controller
         return view('admin.programming.schedules.create', array_merge($this->formData(), ['mode' => 'mass']));
     }
 
-    public function holidays(Request $request)
-    {
-        $data = $request->validate([
-            'start_date' => ['required', 'date'],
-            'end_date' => ['required', 'date', 'after_or_equal:start_date'],
-        ]);
-        return response()->json(Holiday::active()->whereBetween('date', [$data['start_date'], $data['end_date']])
-            ->orderBy('date')->get(['id', 'date', 'description']));
-    }
-
     public function groupData(PersonnelGroup $personnelGroup)
     {
         if (! $personnelGroup->status) {
@@ -115,6 +104,8 @@ class ProgrammingScheduleController extends Controller
         return response()->json([
             'group_id' => $personnelGroup->id,
             'group_name' => $personnelGroup->name,
+            'shift_id' => $personnelGroup->shift_id,
+            'vehicle_id' => $personnelGroup->vehicle_id,
             'driver_id' => $personnelGroup->driver_id,
             'helper_ids' => $personnelGroup->helpers->pluck('id')->map(fn ($id) => (int) $id)->values(),
             'days_of_week' => array_map('intval', $personnelGroup->days_of_week ?? []),
@@ -129,179 +120,213 @@ class ProgrammingScheduleController extends Controller
         ]);
     }
 
+    public function holidays(Request $request)
+    {
+        $data = $request->validate([
+            'start_date' => ['required', 'date'],
+            'end_date' => ['required', 'date', 'after_or_equal:start_date'],
+        ]);
+
+        return response()->json(Holiday::active()
+            ->whereBetween('date', [$data['start_date'], $data['end_date']])
+            ->orderBy('date')->get(['id', 'date', 'description']));
+    }
+
     public function validateAvailability(Request $request)
     {
-        $request->validate(['schedule_id' => ['nullable', 'integer', 'exists:programming_schedules,id']]);
-        $scheduleId = $request->filled('schedule_id') ? (int) $request->input('schedule_id') : null;
-        if ($scheduleId && ! in_array(ProgrammingSchedule::findOrFail($scheduleId)->status, ['Programada', 'Reprogramado'], true)) {
-            return response()->json(['message' => 'Solo se pueden editar programaciones activas.'], 409);
+        $definitions = $this->definitions($request);
+        $excludeScheduleId = $request->filled('schedule_id') ? $request->integer('schedule_id') : null;
+        if ($excludeScheduleId) {
+            ProgrammingSchedule::query()->where('status', 'Programada')->findOrFail($excludeScheduleId);
         }
-        $schedule = $scheduleId ? ProgrammingSchedule::findOrFail($scheduleId) : null;
-        $definitions = $schedule ? [$this->dailyDefinition($request, $schedule)] : $this->definitions($request);
-        $result = $this->availability->check($definitions, $scheduleId, $schedule ? $definitions[0]['start_date'] : null);
-        $available = $result['service_days'] > 0;
+        $result = $this->availability->check($definitions, $excludeScheduleId);
+        $hardErrors = $result['hard_conflicts'];
+        if ($result['available_service_days'] === 0 && $hardErrors === []) {
+            $hardErrors[] = 'Ninguna fecha del periodo está disponible para programar. Revise las fechas omitidas.';
+        }
+
+        if ($hardErrors !== []) {
+            return response()->json([
+                'available' => false,
+                'conflicts' => $hardErrors,
+                'skipped' => $result['skipped'],
+                'warnings' => $result['warnings'],
+                'service_days' => $result['service_days'],
+                'available_service_days' => $result['available_service_days'],
+                'skipped_service_days' => $result['skipped_service_days'],
+            ], 409);
+        }
 
         return response()->json([
-            'available' => $available,
-            'token' => $available ? $this->availabilityToken($definitions) : null,
-            'conflicts' => $result['conflicts'],
+            'available' => true,
+            'token' => $this->availabilityToken($definitions, $result['blocked_dates']),
             'service_days' => $result['service_days'],
-            'skipped_days' => $result['skipped_days'],
-            'omissions' => $result['omissions'],
-            'program_count' => count($result['definitions']),
+            'available_service_days' => $result['available_service_days'],
+            'skipped_service_days' => $result['skipped_service_days'],
+            'program_count' => count($definitions),
+            'skipped' => $result['skipped'],
             'warnings' => $result['warnings'],
             'suggestions' => $result['suggestions'],
-            'message' => $available
-                ? 'Puede guardar la programación de los días disponibles.'
-                : 'No hay días disponibles para programar.',
-        ], $available ? 200 : 409);
+            'message' => 'Se programarán '.$result['available_service_days'].' fechas disponibles y se omitirán '.$result['skipped_service_days'].' por inconsistencias.',
+        ]);
     }
 
     public function store(Request $request)
     {
         $definitions = $this->definitions($request);
-        $this->assertAvailabilityToken($request, $definitions);
         $result = $this->availability->check($definitions);
-
-        if ($result['conflicts'] !== []) {
-            return response()->json(['available' => false, 'conflicts' => $result['conflicts'], 'warnings' => $result['warnings'], 'suggestions' => $result['suggestions'], 'omissions' => $result['omissions']], 409);
+        $this->assertAvailabilityToken($request, $definitions, $result['blocked_dates']);
+        $hardErrors = $result['hard_conflicts'];
+        if ($result['available_service_days'] === 0 && $hardErrors === []) {
+            $hardErrors[] = 'Ninguna fecha del periodo está disponible para programar. Revise las fechas omitidas.';
+        }
+        if ($hardErrors !== []) {
+            return response()->json(['available' => false, 'conflicts' => $hardErrors, 'skipped' => $result['skipped'], 'warnings' => $result['warnings']], 409);
         }
 
-        $definitions = $result['definitions'];
-        $batchUuid = $request->input('mode') === 'mass' ? (string) Str::uuid() : null;
-        $created = DB::transaction(function () use ($definitions, $batchUuid) {
-            return collect($definitions)->map(function ($definition) use ($batchUuid) {
+        $scheduleDefinitions = [];
+        foreach ($definitions as $index => $definition) {
+            $scheduleDefinitions = array_merge($scheduleDefinitions, $this->availableSegments($definition, $result['blocked_dates'][$index] ?? []));
+        }
+        $isMass = $request->input('mode') === 'mass';
+        $batchUuid = ($isMass || count($scheduleDefinitions) > 1) ? (string) Str::uuid() : null;
+        $created = DB::transaction(function () use ($scheduleDefinitions, $batchUuid, $isMass) {
+            return collect($scheduleDefinitions)->map(function ($definition) use ($batchUuid, $isMass) {
                 $schedule = ProgrammingSchedule::create($this->attributes($definition, $batchUuid));
-                $this->recordHistory($schedule, $batchUuid ? 'created_mass' : 'created', null, $this->snapshot($schedule), $batchUuid ? 'Programación creada en lote.' : 'Programación creada.');
+                $this->recordHistory($schedule, $isMass ? 'created_mass' : ($batchUuid ? 'created_mass' : 'created'), null, $this->snapshot($schedule), $isMass ? 'Creada en programación masiva para fechas disponibles.' : ($batchUuid ? 'Programación creada para fechas disponibles.' : 'Programación creada.'));
                 return $schedule;
             });
         });
 
+        $message = 'Se generaron programaciones para '.$result['available_service_days'].' fechas disponibles.';
+        if ($result['skipped_service_days'] > 0) $message .= ' Se omitieron '.$result['skipped_service_days'].' fechas por las inconsistencias indicadas.';
+
         return response()->json([
-            'message' => count($created) > 1
-                ? count($created).' programaciones registradas exitosamente.'
-                : 'Programación registrada exitosamente.',
-            'service_days' => $result['service_days'],
-            'skipped_days' => $result['skipped_days'],
-            'omissions' => $result['omissions'],
+            'message' => $message,
+            'created_schedules' => count($created),
+            'skipped' => $result['skipped'],
             'warnings' => $result['warnings'],
-            'suggestions' => $result['suggestions'],
         ]);
     }
 
     public function edit(Request $request, ProgrammingSchedule $schedule)
     {
-        abort_unless(in_array($schedule->status, ['Programada', 'Reprogramado'], true), 409, 'Solo se pueden modificar programaciones activas.');
-        $date = $this->scheduledDate($request, $schedule);
-        return view('admin.programming.schedules.edit-day', array_merge($this->formData($schedule), [
-            'serviceDate' => $date,
-            'shifts' => Shift::orderBy('name')->get(),
-            'vehicles' => Vehicle::orderBy('plate')->get(),
-        ]));
+        if (! in_array($schedule->status, ['Programada', 'Reprogramado'], true)) {
+            return response('Solo se pueden modificar programaciones activas.', 409);
+        }
+
+        $data = $request->validate(['date' => ['required', 'date']]);
+        $serviceDate = Carbon::parse($data['date'])->toDateString();
+        if ($serviceDate < $schedule->start_date->toDateString() || $serviceDate > $schedule->end_date->toDateString()
+            || ! in_array(Carbon::parse($serviceDate)->dayOfWeekIso, array_map('intval', $schedule->days_of_week ?? []), true)) {
+            return response('La fecha seleccionada no pertenece a esta programación.', 422);
+        }
+
+        return view('admin.programming.schedules.edit', $this->formData($schedule, $serviceDate));
     }
 
     public function update(Request $request, ProgrammingSchedule $schedule)
     {
-        $definition = $this->dailyDefinition($request, $schedule);
-        $this->assertAvailabilityToken($request, [$definition]);
+        if (! in_array($schedule->status, ['Programada', 'Reprogramado'], true)) {
+            return response()->json(['message' => 'Solo se pueden modificar programaciones activas.'], 409);
+        }
 
-        return DB::transaction(function () use ($request, $schedule) {
-            $schedule = ProgrammingSchedule::lockForUpdate()->findOrFail($schedule->id);
-            $definition = $this->dailyDefinition($request, $schedule);
-            $result = $this->availability->check([$definition], $schedule->id, $definition['start_date']);
-            if ($result['conflicts'] !== []) {
-                return response()->json([
-                    'conflicts' => $result['conflicts'], 'omissions' => $result['omissions'],
-                    'warnings' => $result['warnings'], 'suggestions' => $result['suggestions'],
-                ], 409);
-            }
+        $dayData = $request->validate([
+            'service_date' => ['required', 'date'],
+            'change_reason' => ['required', 'string', 'min:5', 'max:500'],
+        ], [
+            'service_date.required' => 'No se recibió la fecha de la programación que se va a modificar.',
+            'change_reason.required' => 'Indique el motivo del cambio.',
+            'change_reason.min' => 'El motivo debe tener al menos 5 caracteres.',
+            'change_reason.max' => 'El motivo no debe superar los 500 caracteres.',
+        ]);
+        $serviceDate = Carbon::parse($dayData['service_date'])->toDateString();
+        if ($serviceDate < $schedule->start_date->toDateString() || $serviceDate > $schedule->end_date->toDateString()
+            || ! in_array(Carbon::parse($serviceDate)->dayOfWeekIso, array_map('intval', $schedule->days_of_week ?? []), true)) {
+            throw ValidationException::withMessages(['service_date' => 'La fecha ya no pertenece a esta programación. Actualice el listado e inténtelo nuevamente.']);
+        }
+
+        if ($request->input('mode') !== 'individual') {
+            throw ValidationException::withMessages(['mode' => 'La edición por fecha es individual.']);
+        }
+        $definitions = $this->definitions($request, $schedule->id);
+        if (count($definitions) !== 1) {
+            throw ValidationException::withMessages(['mode' => 'Solo se puede modificar una programación por fecha.']);
+        }
+        $definitions[0]['start_date'] = $serviceDate;
+        $definitions[0]['end_date'] = $serviceDate;
+        $definitions[0]['days_of_week'] = [Carbon::parse($serviceDate)->dayOfWeekIso];
+        $result = $this->availability->check($definitions, $schedule->id);
+        $this->assertAvailabilityToken($request, $definitions, $result['blocked_dates']);
+        $hardErrors = $result['hard_conflicts'];
+        if ($result['available_service_days'] === 0 && $hardErrors === []) {
+            $hardErrors[] = 'La fecha no está disponible para reprogramar. Revise las inconsistencias.';
+        }
+        if ($hardErrors !== []) {
+            return response()->json(['available' => false, 'conflicts' => $hardErrors, 'skipped' => $result['skipped'], 'warnings' => $result['warnings']], 409);
+        }
+
+        $reason = trim($dayData['change_reason']);
+        if (mb_strlen($reason) < 5) {
+            throw ValidationException::withMessages(['change_reason' => 'El motivo debe tener al menos 5 caracteres útiles.']);
+        }
+        $newDefinition = $definitions[0];
+        $newDefinition['start_date'] = $serviceDate;
+        $newDefinition['end_date'] = $serviceDate;
+        $newDefinition['days_of_week'] = [Carbon::parse($serviceDate)->dayOfWeekIso];
+        $newDefinition['status'] = 'Reprogramado';
+
+        $oldDefinition = [
+            'group_id' => $schedule->personnel_group_id,
+            'group_name' => $schedule->group_name,
+            'start_date' => $schedule->start_date->toDateString(),
+            'end_date' => $schedule->end_date->toDateString(),
+            'shift_id' => $schedule->shift_id,
+            'shift_name' => $schedule->shift_name,
+            'shift_start_time' => $schedule->shift_start_time,
+            'shift_end_time' => $schedule->shift_end_time,
+            'zone_id' => $schedule->zone_id,
+            'zone_name' => $schedule->zone_name,
+            'vehicle_id' => $schedule->vehicle_id,
+            'vehicle_label' => $schedule->vehicle_label,
+            'driver_id' => $schedule->driver_id,
+            'driver_name' => $schedule->driver_name,
+            'helper_ids' => $schedule->helper_ids ?? [],
+            'helper_names' => $schedule->helper_names ?? [],
+            'days_of_week' => $schedule->days_of_week ?? [],
+        ];
+        $remainingSegments = $this->availableSegments($oldDefinition, [$serviceDate]);
+        $batchUuid = $schedule->batch_uuid ?: (count($remainingSegments) > 1 ? (string) Str::uuid() : null);
+
+        DB::transaction(function () use ($schedule, $remainingSegments, $newDefinition, $batchUuid, $reason) {
             $before = $this->snapshot($schedule);
-            $attributes = $this->attributes($result['definitions'][0], $schedule->batch_uuid);
-            $attributes['status'] = 'Reprogramado';
-            if ($schedule->parent_schedule_id) {
+            if ($remainingSegments === []) {
+                $attributes = $this->attributes($newDefinition, $schedule->batch_uuid);
                 unset($attributes['created_by']);
                 $schedule->update($attributes);
-                $changed = $schedule;
-            } else {
-                $schedule->update(['excluded_dates' => array_values(array_unique(array_merge(
-                    $schedule->excluded_dates ?? [], [$definition['start_date']]
-                )))]);
-                $attributes['parent_schedule_id'] = $schedule->id;
-                $changed = ProgrammingSchedule::create($attributes);
+                $this->recordHistory($schedule, 'reprogrammed', $before, $this->snapshot($schedule), 'Motivo: '.$reason);
+                return;
             }
-            $before['periodo'] = Carbon::parse($definition['start_date'])->format('d/m/Y');
-            $before['dias'] = PersonnelGroup::WEEKDAYS[Carbon::parse($definition['start_date'])->dayOfWeekIso];
-            $before['fechas_omitidas'] = '';
-            $after = $this->snapshot($changed);
-            $after['periodo'] = $before['periodo'];
-            $notes = collect($definition['change_reasons'])->map(fn ($reason, $field) => $field.': '.$reason)->implode(' | ');
-            $this->recordHistory($changed, 'rescheduled', $before, $after, $notes);
-            return response()->json([
-                'message' => 'El día seleccionado fue reprogramado. Los demás días conservan su programación.',
-                'warnings' => $result['warnings'], 'omissions' => [], 'suggestions' => $result['suggestions'],
-            ]);
+
+            $first = array_shift($remainingSegments);
+            $attributes = $this->attributes($first, $batchUuid);
+            unset($attributes['created_by']);
+            $schedule->update($attributes);
+            $this->recordHistory($schedule, 'split', $before, $this->snapshot($schedule), 'Se separó la fecha modificada. Motivo: '.$reason);
+
+            foreach ($remainingSegments as $segment) {
+                $segmentSchedule = ProgrammingSchedule::create($this->attributes($segment, $batchUuid));
+                $this->recordHistory($segmentSchedule, 'split_segment', null, $this->snapshot($segmentSchedule), 'Segmento restante de la programación original.');
+            }
+
+            $reprogrammed = ProgrammingSchedule::create($this->attributes($newDefinition, $batchUuid));
+            $this->recordHistory($reprogrammed, 'reprogrammed', null, $this->snapshot($reprogrammed), 'Motivo: '.$reason);
         });
-    }
 
-    private function scheduledDate(Request $request, ProgrammingSchedule $schedule): string
-    {
-        $data = $request->validate(['date' => ['required', 'date', 'after_or_equal:today']]);
-        $date = Carbon::parse($data['date']);
-        abort_unless(
-            $date->toDateString() >= $schedule->start_date->toDateString()
-            && $date->toDateString() <= $schedule->end_date->toDateString()
-            && in_array($date->dayOfWeekIso, array_map('intval', $schedule->days_of_week ?? []), true)
-            && ! in_array($date->toDateString(), $schedule->excluded_dates ?? [], true),
-            409, 'El día seleccionado ya no pertenece a esta programación. Actualice la lista.'
-        );
-        return $date->toDateString();
-    }
-
-    private function dailyDefinition(Request $request, ProgrammingSchedule $schedule): array
-    {
-        abort_unless(in_array($schedule->status, ['Programada', 'Reprogramado'], true), 409, 'Solo se pueden modificar programaciones activas.');
-        $date = $this->scheduledDate($request, $schedule);
-        $data = $request->validate([
-            'shift_id' => ['required', 'integer', 'exists:shifts,id'],
-            'vehicle_id' => ['required', 'integer', 'exists:vehicles,id'],
-            'driver_id' => ['required', 'integer', 'exists:employees,id'],
-            'helper_ids' => ['required', 'array', 'min:1'],
-            'helper_ids.*' => ['required', 'integer', 'distinct', 'exists:employees,id'],
-            'reasons' => ['required', 'array'],
-            'reasons.*' => ['nullable', 'string', 'max:1000'],
+        return response()->json([
+            'message' => 'La programación del '.$serviceDate.' fue reprogramada. Motivo registrado en el historial.',
+            'warnings' => $result['warnings'],
         ]);
-        $helpers = array_map('intval', $data['helper_ids']);
-        $oldHelpers = array_map('intval', $schedule->helper_ids ?? []);
-        sort($helpers);
-        sort($oldHelpers);
-        $changes = [
-            'turno' => (int) $data['shift_id'] !== (int) $schedule->shift_id,
-            'vehiculo' => (int) $data['vehicle_id'] !== (int) $schedule->vehicle_id,
-            'conductor' => (int) $data['driver_id'] !== (int) $schedule->driver_id,
-            'ayudantes' => $helpers !== $oldHelpers,
-        ];
-        $reasons = [];
-        foreach ($changes as $field => $changed) {
-            if (! $changed) continue;
-            $reason = trim($data['reasons'][$field] ?? '');
-            if ($reason === '') throw ValidationException::withMessages(['reasons.'.$field => 'Indique el motivo del cambio de '.$field.'.']);
-            $reasons[$field] = $reason;
-        }
-        if ($reasons === []) throw ValidationException::withMessages(['changes' => 'Realice al menos un cambio para reprogramar este día.']);
-        $vehicle = Vehicle::findOrFail($data['vehicle_id']);
-        $shift = Shift::findOrFail($data['shift_id']);
-        $this->assertEligibleCrew((int) $data['driver_id'], $helpers, $vehicle);
-        return [
-            'group_id' => $schedule->personnel_group_id, 'group_name' => $schedule->group_name,
-            'start_date' => $date, 'end_date' => $date, 'days_of_week' => [Carbon::parse($date)->dayOfWeekIso],
-            'shift_id' => $shift->id, 'shift_name' => $shift->name,
-            'shift_start_time' => $shift->start_time, 'shift_end_time' => $shift->end_time,
-            'zone_id' => $schedule->zone_id, 'zone_name' => $schedule->zone_name,
-            'vehicle_id' => $vehicle->id, 'vehicle_label' => trim($vehicle->plate.' · '.$vehicle->name),
-            'driver_id' => (int) $data['driver_id'], 'driver_name' => Employee::findOrFail($data['driver_id'])->full_name,
-            'helper_ids' => $helpers, 'helper_names' => Employee::whereIn('id', $helpers)->orderBy('last_name')->get()->map->full_name->values()->all(),
-            'change_reasons' => $reasons,
-        ];
     }
 
     public function destroy(ProgrammingSchedule $schedule)
@@ -335,9 +360,7 @@ class ProgrammingScheduleController extends Controller
 
     public function history(ProgrammingSchedule $schedule)
     {
-        $rootId = $schedule->parent_schedule_id ?: $schedule->id;
-        $familyIds = ProgrammingSchedule::where('id', $rootId)->orWhere('parent_schedule_id', $rootId)->pluck('id');
-        $histories = ProgrammingScheduleHistory::whereIn('programming_schedule_id', $familyIds)->with('actor')->latest()->get();
+        $histories = $schedule->histories()->with('actor')->latest()->get();
         return view('admin.programming.schedules.history', compact('schedule', 'histories'));
     }
     public function allHistory()
@@ -348,7 +371,23 @@ class ProgrammingScheduleController extends Controller
         return view('admin.programming.schedules.history', compact('schedule', 'histories'));
     }
 
-    private function formData(?ProgrammingSchedule $schedule = null): array
+    public function groupDetails(PersonnelGroup $personnelGroup)
+    {
+        $personnelGroup->load(['shift', 'zone', 'vehicle', 'driver', 'helpers']);
+        $schedules = ProgrammingSchedule::query()->where('personnel_group_id', $personnelGroup->id)->latest()->get();
+        $scheduleIds = $schedules->pluck('id');
+        $labelPattern = addcslashes($personnelGroup->name.' · ', '\\%_').'%';
+        $histories = ProgrammingScheduleHistory::query()->with('actor')
+            ->where(function ($query) use ($scheduleIds, $labelPattern) {
+                if ($scheduleIds->isNotEmpty()) $query->whereIn('programming_schedule_id', $scheduleIds);
+                else $query->whereRaw('1 = 0');
+                $query->orWhere('schedule_label', 'like', $labelPattern);
+            })->latest()->get();
+
+        return view('admin.programming.personnel-groups.details', compact('personnelGroup', 'schedules', 'histories'));
+    }
+
+    private function formData(?ProgrammingSchedule $schedule = null, ?string $singleDayDate = null): array
     {
         $groups = PersonnelGroup::with(['shift', 'zone', 'vehicle', 'driver', 'helpers'])
             ->where('status', true)->orderBy('name')->get();
@@ -373,7 +412,9 @@ class ProgrammingScheduleController extends Controller
             'drivers' => $drivers,
             'helpers' => $helpers,
             'weekdays' => PersonnelGroup::WEEKDAYS,
-            'shifts' => Shift::orderBy('name')->get(),
+            'shifts' => Shift::orderBy('start_time')->get(),
+            'vehicles' => Vehicle::orderBy('plate')->get(),
+            'singleDayDate' => $singleDayDate,
         ];
     }
 
@@ -394,8 +435,15 @@ class ProgrammingScheduleController extends Controller
         ];
 
         if ($mode === 'mass') {
-            $rules['group_ids'] = ['required', 'array', 'min:1'];
+            $rules['group_ids'] = ['required', 'array', 'min:1', 'max:100'];
             $rules['group_ids.*'] = ['required', 'integer', 'distinct', 'exists:personnel_groups,id'];
+            $rules['groups'] = ['sometimes', 'array'];
+            $rules['groups.*.driver_id'] = ['required', 'integer', 'exists:employees,id'];
+            $rules['groups.*.helper_ids'] = ['required', 'array', 'min:1'];
+            $rules['groups.*.helper_ids.*'] = ['required', 'integer', 'distinct', 'exists:employees,id'];
+            $rules['holidays_configured'] = ['sometimes', 'boolean'];
+            $rules['holiday_ids'] = ['sometimes', 'array'];
+            $rules['holiday_ids.*'] = ['integer', 'distinct', 'exists:holidays,id'];
         } else {
             $rules['group_id'] = ['required', 'integer', 'exists:personnel_groups,id'];
             $rules['driver_id'] = ['required', 'integer', 'exists:employees,id'];
@@ -403,17 +451,10 @@ class ProgrammingScheduleController extends Controller
             $rules['helper_ids.*'] = ['required', 'integer', 'distinct', 'exists:employees,id'];
             $rules['days_of_week'] = ['required', 'array', 'min:1'];
             $rules['days_of_week.*'] = ['required', 'integer', 'distinct', Rule::in(array_keys(PersonnelGroup::WEEKDAYS))];
+            $rules['shift_id'] = ['sometimes', 'required', 'integer', 'exists:shifts,id'];
+            $rules['vehicle_id'] = ['sometimes', 'required', 'integer', 'exists:vehicles,id'];
         }
 
-        if ($mode === 'mass') {
-            $rules['groups'] = ['sometimes', 'array'];
-            $rules['groups.*.driver_id'] = ['required', 'integer', 'exists:employees,id'];
-            $rules['groups.*.helper_ids'] = ['required', 'array', 'min:1'];
-            $rules['groups.*.helper_ids.*'] = ['required', 'integer', 'exists:employees,id'];
-            $rules['holidays_configured'] = ['sometimes', 'boolean'];
-            $rules['holiday_ids'] = ['sometimes', 'array'];
-            $rules['holiday_ids.*'] = ['integer', 'distinct', 'exists:holidays,id'];
-        }
         $data = $request->validate($rules);
         $groupIds = $mode === 'mass'
             ? array_map('intval', $data['group_ids'])
@@ -436,13 +477,15 @@ class ProgrammingScheduleController extends Controller
             }
 
             $override = $data['groups'][$groupId] ?? null;
-            if (isset($data['groups']) && $override === null) {
+            if ($mode === 'mass' && $override === null) {
                 throw ValidationException::withMessages(['groups' => 'Revise el personal de todos los grupos seleccionados.']);
             }
-            $driverId = $mode === 'individual' ? (int) $data['driver_id'] : (int) ($override['driver_id'] ?? $group->driver_id);
+            $driverId = $mode === 'individual'
+                ? (int) $data['driver_id']
+                : (int) ($override['driver_id'] ?? $group->driver_id);
             $helperIds = $mode === 'individual'
                 ? array_values(array_unique(array_map('intval', $data['helper_ids'])))
-                : ($override ? array_values(array_unique(array_map('intval', $override['helper_ids']))) : $group->helpers->pluck('id')->map(fn ($id) => (int) $id)->values()->all());
+                : array_values(array_unique(array_map('intval', $override['helper_ids'] ?? [])));
             $days = $mode === 'individual'
                 ? array_values(array_unique(array_map('intval', $data['days_of_week'])))
                 : array_values(array_unique(array_map('intval', $group->days_of_week ?? [])));
@@ -450,20 +493,22 @@ class ProgrammingScheduleController extends Controller
             if ($helperIds === [] || $days === []) {
                 throw ValidationException::withMessages(['group_id' => 'El grupo «'.$group->name.'» debe tener ayudantes y días de trabajo configurados.']);
             }
-            $this->assertEligibleCrew($driverId, $helperIds, $group->vehicle);
+            $shift = $mode === 'individual' && isset($data['shift_id']) ? Shift::findOrFail($data['shift_id']) : $group->shift;
+            $vehicle = $mode === 'individual' && isset($data['vehicle_id']) ? Vehicle::findOrFail($data['vehicle_id']) : $group->vehicle;
+            $this->assertEligibleCrew($driverId, $helperIds, $group, $vehicle);
             $definitions[] = [
                 'group_id' => (int) $group->id,
                 'group_name' => $group->name,
                 'start_date' => Carbon::parse($data['start_date'])->toDateString(),
                 'end_date' => Carbon::parse($data['end_date'])->toDateString(),
-                'shift_id' => (int) $group->shift_id,
-                'shift_name' => $group->shift->name,
-                'shift_start_time' => $group->shift->start_time,
-                'shift_end_time' => $group->shift->end_time,
+                'shift_id' => (int) $shift->id,
+                'shift_name' => $shift->name,
+                'shift_start_time' => $shift->start_time,
+                'shift_end_time' => $shift->end_time,
                 'zone_id' => (int) $group->zone_id,
                 'zone_name' => $group->zone->name,
-                'vehicle_id' => (int) $group->vehicle_id,
-                'vehicle_label' => trim($group->vehicle->plate.' · '.$group->vehicle->name),
+                'vehicle_id' => (int) $vehicle->id,
+                'vehicle_label' => trim($vehicle->plate.' · '.$vehicle->name),
                 'driver_id' => $driverId,
                 'driver_name' => Employee::find($driverId)?->full_name ?? $group->driver->full_name,
                 'helper_ids' => $helperIds,
@@ -476,7 +521,7 @@ class ProgrammingScheduleController extends Controller
         return $definitions;
     }
 
-    private function assertEligibleCrew(int $driverId, array $helperIds, Vehicle $vehicle): void
+    private function assertEligibleCrew(int $driverId, array $helperIds, PersonnelGroup $group, ?Vehicle $vehicle = null): void
     {
         if (! $this->employeesOfType('Conductor')->whereKey($driverId)->exists()) {
             throw ValidationException::withMessages(['driver_id' => 'El conductor debe estar activo y ser de tipo Conductor.']);
@@ -487,27 +532,30 @@ class ProgrammingScheduleController extends Controller
         if (in_array($driverId, $helperIds, true)) {
             throw ValidationException::withMessages(['helper_ids' => 'El conductor no puede figurar también como ayudante.']);
         }
+        $vehicle ??= $group->vehicle;
         if (count($helperIds) + 1 > (int) $vehicle->occupant_capacity) {
             throw ValidationException::withMessages(['helper_ids' => 'La cantidad de personal supera la capacidad del vehículo '.$vehicle->plate.'.']);
         }
     }
 
-    private function tokenPayload(array $definitions): string
+    private function tokenPayload(array $definitions, array $blockedDates): string
     {
-        return json_encode(array_map(fn ($item) => [
-            $item['group_id'], $item['start_date'], $item['end_date'], $item['driver_id'],
-            $item['helper_ids'], $item['days_of_week'], $item['shift_id'], $item['vehicle_id'],
-            $item['holiday_ids'] ?? null, $item['change_reasons'] ?? [],
-        ], $definitions), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        return json_encode([
+            'definitions' => array_map(fn ($item) => [
+                $item['group_id'], $item['start_date'], $item['end_date'], $item['driver_id'],
+                $item['helper_ids'], $item['days_of_week'], $item['shift_id'], $item['vehicle_id'], $item['holiday_ids'] ?? null,
+            ], $definitions),
+            'blocked_dates' => $blockedDates,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
-    private function availabilityToken(array $definitions, ?int $issued = null): string
+    private function availabilityToken(array $definitions, array $blockedDates, ?int $issued = null): string
     {
         $issued ??= now()->timestamp;
-        return $issued.'.'.hash_hmac('sha256', $issued.'|'.$this->tokenPayload($definitions), config('app.key'));
+        return $issued.'.'.hash_hmac('sha256', $issued.'|'.$this->tokenPayload($definitions, $blockedDates), config('app.key'));
     }
 
-    private function assertAvailabilityToken(Request $request, array $definitions): void
+    private function assertAvailabilityToken(Request $request, array $definitions, array $blockedDates): void
     {
         $token = (string) $request->input('availability_token', '');
         if (! preg_match('/^(\d+)\.([a-f0-9]{64})$/', $token, $matches)
@@ -515,9 +563,49 @@ class ProgrammingScheduleController extends Controller
             || now()->timestamp < (int) $matches[1]) {
             abort(409, 'Vuelva a validar la disponibilidad antes de guardar.');
         }
-        if (! hash_equals($this->availabilityToken($definitions, (int) $matches[1]), $token)) {
-            abort(409, 'Los datos cambiaron después de la validación. Valide nuevamente la disponibilidad.');
+        if (! hash_equals($this->availabilityToken($definitions, $blockedDates, (int) $matches[1]), $token)) {
+            abort(409, 'La disponibilidad cambió después de validar. Vuelva a validar antes de guardar.');
         }
+    }
+
+    private function availableSegments(array $definition, array $blockedDates): array
+    {
+        if ($blockedDates === []) return [$definition];
+
+        $blocked = array_fill_keys($blockedDates, true);
+        $weekdays = array_fill_keys(array_map('intval', $definition['days_of_week']), true);
+        $segments = [];
+        $segmentStart = null;
+        $segmentEnd = null;
+
+        foreach (CarbonPeriod::create($definition['start_date'], $definition['end_date']) as $date) {
+            if (! isset($weekdays[$date->dayOfWeekIso])) continue;
+            $dateValue = $date->toDateString();
+
+            if (isset($blocked[$dateValue])) {
+                if ($segmentStart !== null) {
+                    $segment = $definition;
+                    $segment['start_date'] = $segmentStart;
+                    $segment['end_date'] = $segmentEnd;
+                    $segments[] = $segment;
+                    $segmentStart = null;
+                    $segmentEnd = null;
+                }
+                continue;
+            }
+
+            $segmentStart ??= $dateValue;
+            $segmentEnd = $dateValue;
+        }
+
+        if ($segmentStart !== null) {
+            $segment = $definition;
+            $segment['start_date'] = $segmentStart;
+            $segment['end_date'] = $segmentEnd;
+            $segments[] = $segment;
+        }
+
+        return $segments;
     }
 
     private function attributes(array $definition, ?string $batchUuid = null): array
@@ -539,10 +627,9 @@ class ProgrammingScheduleController extends Controller
             'helper_ids' => $definition['helper_ids'],
             'helper_names' => $definition['helper_names'],
             'days_of_week' => $definition['days_of_week'],
-            'excluded_dates' => $definition['excluded_dates'] ?? [],
             'start_date' => $definition['start_date'],
             'end_date' => $definition['end_date'],
-            'status' => 'Programada',
+            'status' => $definition['status'] ?? 'Programada',
             'created_by' => Auth::id(),
         ];
     }
@@ -558,7 +645,6 @@ class ProgrammingScheduleController extends Controller
             'conductor' => $schedule->driver_name,
             'ayudantes' => implode(', ', $schedule->helper_names ?? []),
             'dias' => collect($schedule->days_of_week)->map(fn ($day) => PersonnelGroup::WEEKDAYS[(int) $day] ?? '')->filter()->implode(', '),
-            'fechas_omitidas' => implode(', ', $schedule->excluded_dates ?? []),
             'estado' => $schedule->status,
         ];
     }

@@ -2,6 +2,7 @@
 
 namespace App\Services\Programming;
 
+use App\Models\Employees\Employee;
 use App\Models\Employees\Vacation;
 use App\Models\Programming\Holiday;
 use App\Models\Programming\ProgrammingSchedule;
@@ -12,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
 
 class ScheduleAvailabilityService
 {
-    public function check(array $definitions, ?int $excludeScheduleId = null, ?string $excludeDate = null): array
+    public function check(array $definitions, ?int $excludeScheduleId = null): array
     {
         $employeeIds = collect($definitions)
             ->flatMap(fn ($item) => array_merge([$item['driver_id']], $item['helper_ids']))
@@ -20,12 +21,17 @@ class ScheduleAvailabilityService
         $minDate = collect($definitions)->min('start_date');
         $maxDate = collect($definitions)->max('end_date');
 
-        $holidays = Holiday::active()->whereBetween('date', [$minDate, $maxDate])
-            ->when(isset($definitions[0]['holiday_ids']), fn ($q) => $q->whereIn('id', $definitions[0]['holiday_ids']))
+        $holidayQuery = Holiday::active()->whereBetween('date', [$minDate, $maxDate]);
+        if (array_key_exists('holiday_ids', $definitions[0]) && $definitions[0]['holiday_ids'] !== null) {
+            $holidayQuery->whereIn('id', $definitions[0]['holiday_ids']);
+        }
+        $holidays = $holidayQuery
             ->pluck('description', 'date')
             ->mapWithKeys(fn ($description, $date) => [Carbon::parse($date)->toDateString() => $description]);
 
-        $vacations = Vacation::with('employee')
+        $employeeNames = Employee::query()->whereIn('id', $employeeIds)
+            ->get(['id', 'first_name', 'last_name'])->keyBy('id');
+        $vacations = Vacation::query()->with('employee:id,first_name,last_name')
             ->whereIn('employee_id', $employeeIds)
             ->whereIn('status', ['Pendiente', 'Aprobada'])
             ->whereDate('start_date', '<=', $maxDate)
@@ -41,33 +47,35 @@ class ScheduleAvailabilityService
 
         $existing = ProgrammingSchedule::query()->whereIn('status', ['Programada', 'Reprogramado'])
             ->whereDate('start_date', '<=', Carbon::parse($maxDate)->addDay()->toDateString())->whereDate('end_date', '>=', Carbon::parse($minDate)->subDay()->toDateString())
-            ->when($excludeScheduleId && $excludeDate === null, fn ($query) => $query->where('id', '!=', $excludeScheduleId))
+            ->when($excludeScheduleId, fn ($query) => $query->where('id', '!=', $excludeScheduleId))
             ->get();
 
         $conflicts = [];
         $warnings = [];
         $plannedSlots = [];
+        $replacementTargets = [];
+        $blockedByDefinition = [];
+        $hardConflicts = [];
         $serviceDays = 0;
-        $skippedDays = 0;
-        $acceptedDefinitions = [];
-        $omissions = [];
+        $availableServiceDays = 0;
 
-        foreach ($definitions as $definition) {
+        foreach ($definitions as $definitionIndex => $definition) {
             $dates = $this->serviceDates($definition);
             if ($dates === []) {
-                $omissions[] = 'El rango no contiene días seleccionados para «'.$definition['group_name'].'».';
+                $message = 'El rango no contiene días seleccionados para «'.$definition['group_name'].'».';
+                $hardConflicts[] = $message;
+                $this->addConflict($conflicts, $message);
                 continue;
             }
 
-            $excludedDates = [];
-            $reasonsByDate = [];
-            $pendingWarnings = [];
             foreach ($dates as $date) {
-                $dayConflicts = [];
+                $serviceDays++;
+                $dateConflicts = [];
+                $dateWarnings = [];
                 $crew = array_values(array_unique(array_merge([$definition['driver_id']], $definition['helper_ids'])));
 
                 if ($holidays->has($date)) {
-                    $this->addConflict($dayConflicts, $date.': feriado activo «'.$holidays->get($date).'».');
+                    $this->addConflict($dateConflicts, $date.': feriado activo «'.$holidays->get($date).'».');
                 }
 
                 foreach ($vacations as $vacation) {
@@ -75,17 +83,18 @@ class ScheduleAvailabilityService
                     if ($date < $vacation->start_date->toDateString() || $date > $vacation->end_date->toDateString()) continue;
 
                     $employeeName = $vacation->employee?->full_name ?? 'Un integrante del grupo';
-                    $period = 'del '.$vacation->start_date->format('d/m/Y').' al '.$vacation->end_date->format('d/m/Y');
                     if ($vacation->status === 'Pendiente') {
-                        $pendingWarnings[] = '«'.$definition['group_name'].'»: '.$employeeName.' tiene vacaciones sin confirmar '.$period.'. Se mantienen esos días; consulte el estado de la solicitud y vuelva a validar si se aprueba.';
-                    } else {
-                        $this->addConflict($dayConflicts, $date.': '.$employeeName.' tiene vacaciones aprobadas '.$period.'.');
+                        $this->addWarning($dateWarnings, $date.': '.$employeeName.' tiene una solicitud de vacaciones pendiente. Puede guardar la programación, pero revise la solicitud antes de aprobarla.');
+                    } elseif ($vacation->status === 'Aprobada') {
+                        $this->addConflict($dateConflicts, $date.': '.$employeeName.' tiene vacaciones aprobadas.');
+                        $this->addReplacementTarget($replacementTargets, (int) $vacation->employee_id, $definition, $employeeNames);
                     }
                 }
 
                 foreach ($absences->get($date, collect()) as $absence) {
                     if (in_array((int) $absence->employee_id, $crew, true)) {
-                        $this->addConflict($dayConflicts, $date.': un integrante del grupo registra una inasistencia.');
+                        $this->addConflict($dateConflicts, $date.': un integrante del grupo registra una inasistencia.');
+                        $this->addReplacementTarget($replacementTargets, (int) $absence->employee_id, $definition, $employeeNames);
                     }
                 }
 
@@ -102,83 +111,91 @@ class ScheduleAvailabilityService
                 foreach ($existing as $other) {
                     foreach ([-1, 0, 1] as $dayOffset) {
                         $otherDate = Carbon::parse($date)->addDays($dayOffset)->toDateString();
-                        if ($other->id === $excludeScheduleId && $otherDate === $excludeDate) continue;
                         if (! $this->runsOn($other, $otherDate)) continue;
                         $otherSlot = $this->slotFromSchedule($other, $otherDate);
                         $otherSlot['day_offset'] = $dayOffset;
-                        $this->checkOverlap($dayConflicts, $slot, $otherSlot);
+                        if ($this->timesOverlap($slot['start'], $slot['end'], $otherSlot['start'], $otherSlot['end'], $dayOffset)) {
+                            foreach (array_intersect($slot['crew'], $otherSlot['crew']) as $employeeId) {
+                                $this->addReplacementTarget($replacementTargets, (int) $employeeId, $definition, $employeeNames);
+                            }
+                        }
+                        $this->checkOverlap($dateConflicts, $slot, $otherSlot);
                     }
                 }
                 foreach ($plannedSlots as $otherSlot) {
                     $dayDifference = (int) ((strtotime($otherSlot['date']) - strtotime($date)) / 86400);
                     if (abs($dayDifference) <= 1) {
                         $otherSlot['day_offset'] = $dayDifference;
-                        $this->checkOverlap($dayConflicts, $slot, $otherSlot);
+                        if ($this->timesOverlap($slot['start'], $slot['end'], $otherSlot['start'], $otherSlot['end'], $dayDifference)) {
+                            foreach (array_intersect($slot['crew'], $otherSlot['crew']) as $employeeId) {
+                                $this->addReplacementTarget($replacementTargets, (int) $employeeId, $definition, $employeeNames);
+                            }
+                        }
+                        $this->checkOverlap($dateConflicts, $slot, $otherSlot);
                     }
                 }
-                if ($dayConflicts !== []) {
-                    $excludedDates[] = $date;
-                    foreach (array_unique($dayConflicts) as $reason) {
-                        // Group the same cause across dates instead of repeating vacations daily.
-                        $reason = preg_replace('/^\d{4}-\d{2}-\d{2}: /', '', $reason);
-                        $reasonsByDate[$reason][] = $date;
-                    }
-                } else {
-                    $serviceDays++;
-                    // Omitted days must not reserve crew or vehicles for later groups in the batch.
-                    $plannedSlots[] = $slot;
+
+                if ($dateConflicts !== []) {
+                    $blockedByDefinition[$definitionIndex][$date] = array_values(array_unique(array_map(
+                        fn ($message) => preg_replace('/^\d{4}-\d{2}-\d{2}:\s*/u', '', $message),
+                        $dateConflicts
+                    )));
+                    foreach ($dateConflicts as $conflict) $this->addConflict($conflicts, $conflict);
+                    continue;
                 }
+
+                $availableServiceDays++;
+                foreach ($dateWarnings as $warning) $this->addWarning($warnings, $warning);
+                $plannedSlots[] = $slot;
             }
-            $warnings = array_merge($warnings, array_unique($pendingWarnings));
-            foreach ($reasonsByDate as $reason => $affectedDates) {
-                $omissions[] = '«'.$definition['group_name'].'»: no se generará programación '.$this->dateRanges($affectedDates).' porque '.$reason;
-            }
-            $skippedDays += count($excludedDates);
-            if (count($excludedDates) < count($dates)) {
-                $definition['excluded_dates'] = $excludedDates;
-                $acceptedDefinitions[] = $definition;
-            }
-        }
-        if ($serviceDays === 0) {
-            $conflicts[] = 'No hay días disponibles para generar la programación. Revise las fechas, los días seleccionados o el personal.';
         }
 
-        $conflicts = array_slice(array_values(array_unique($conflicts)), 0, 100);
-        $warnings = array_slice(array_values(array_unique($warnings)), 0, 100);
+        $blockedDates = [];
+        $skipped = [];
+        $skippedServiceDays = 0;
+        foreach ($blockedByDefinition as $definitionIndex => $dateReasons) {
+            $dates = array_keys($dateReasons);
+            sort($dates);
+            $blockedDates[$definitionIndex] = $dates;
+            $skippedServiceDays += count($dates);
+            $reasonDates = [];
+            foreach ($dateReasons as $date => $reasons) {
+                foreach ($reasons as $reason) $reasonDates[$reason][] = $date;
+            }
+            foreach ($reasonDates as $reason => $reasonDatesList) {
+                $skipped[] = [
+                    'group_name' => $definitions[$definitionIndex]['group_name'],
+                    'reason' => $reason,
+                    'dates' => $this->formatDateRanges($reasonDatesList),
+                ];
+            }
+        }
+
+        $conflicts = array_slice($this->groupRepeatedDateMessages(array_values(array_unique($conflicts))), 0, 100);
+        $warnings = array_slice($this->groupRepeatedDateMessages(array_values(array_unique($warnings))), 0, 100);
+        ksort($blockedDates);
+
+        $suggestions = $skipped === []
+            ? array_values(array_unique(array_merge(
+                $this->suggestionsFor($conflicts, $warnings),
+                $this->replacementSuggestions($replacementTargets, $existing, $plannedSlots)
+            )))
+            : [];
+        if ($hardConflicts !== [] && $suggestions === []) {
+            $suggestions[] = 'Corrija los datos indicados y vuelva a validar la disponibilidad.';
+        }
 
         return [
             'conflicts' => $conflicts,
+            'hard_conflicts' => $hardConflicts,
+            'blocked_dates' => $blockedDates,
+            'skipped' => $skipped,
+            'skipped_service_days' => $skippedServiceDays,
+            'available_service_days' => $availableServiceDays,
             'warnings' => $warnings,
-            'suggestions' => $this->suggestionsFor(array_merge($conflicts, $omissions), $warnings),
+            'suggestions' => $suggestions,
             'service_days' => $serviceDays,
-            'skipped_days' => $skippedDays,
-            'omissions' => $omissions,
-            'definitions' => $acceptedDefinitions,
         ];
-    }
-
-    private function dateRanges(array $dates): string
-    {
-        $dates = array_values(array_unique($dates));
-        sort($dates);
-        $ranges = [];
-        $start = $end = null;
-        foreach ($dates as $date) {
-            if ($end !== null && Carbon::parse($end)->addDay()->toDateString() !== $date) {
-                $ranges[] = $this->rangeLabel($start, $end);
-                $start = null;
-            }
-            $start ??= $date;
-            $end = $date;
-        }
-        if ($start !== null) $ranges[] = $this->rangeLabel($start, $end);
-        return implode(', ', $ranges);
-    }
-
-    private function rangeLabel(string $start, string $end): string
-    {
-        $from = Carbon::parse($start)->format('d/m/Y');
-        return $start === $end ? 'el '.$from : 'del '.$from.' al '.Carbon::parse($end)->format('d/m/Y');
     }
 
     private function serviceDates(array $definition): array
@@ -196,7 +213,6 @@ class ScheduleAvailabilityService
         $dateValue = Carbon::parse($date);
         return $date >= $schedule->start_date->toDateString()
             && $date <= $schedule->end_date->toDateString()
-            && ! in_array($date, $schedule->excluded_dates ?? [], true)
             && in_array($dateValue->dayOfWeekIso, array_map('intval', $schedule->days_of_week ?? []), true);
     }
 
@@ -217,13 +233,13 @@ class ScheduleAvailabilityService
     {
         if (! $this->timesOverlap($candidate['start'], $candidate['end'], $other['start'], $other['end'], (int) ($other['day_offset'] ?? 0))) return;
 
-        if ((int) $candidate['vehicle_id'] === (int) $other['vehicle_id']) {
+        if ($candidate['vehicle_id'] === $other['vehicle_id']) {
             $this->addConflict($conflicts, $candidate['date'].': el vehículo ya está asignado a «'.$other['label'].'».');
         }
         if (array_intersect($candidate['crew'], $other['crew']) !== []) {
             $this->addConflict($conflicts, $candidate['date'].': un integrante del grupo ya está programado en «'.$other['label'].'».');
         }
-        if ($candidate['group_id'] !== null && (int) $candidate['group_id'] === (int) $other['group_id']) {
+        if ($candidate['group_id'] !== null && $candidate['group_id'] === $other['group_id']) {
             $this->addConflict($conflicts, $candidate['date'].': el grupo «'.$candidate['label'].'» ya tiene otra programación.');
         }
     }
@@ -252,8 +268,8 @@ class ScheduleAvailabilityService
         $rules = [
             'rango no contiene días seleccionados' => 'Amplíe el rango de fechas o marque al menos un día incluido en el periodo.',
             'feriado activo' => 'Cambie el rango de fechas o quite el día del feriado de los días de trabajo.',
-            'vacaciones aprobadas' => 'Reemplace a la persona con vacaciones aprobadas por otra del mismo tipo que esté disponible.',
-            'inasistencia' => 'Reemplace al integrante que registra la inasistencia por otra persona disponible del mismo tipo.',
+            'vacaciones aprobadas' => null,
+            'inasistencia' => null,
             'un integrante del grupo ya está programado' => 'Cambie el turno o los días, o seleccione otro integrante para evitar el cruce.',
             'el vehículo ya está asignado' => 'Seleccione otro vehículo o ajuste los días o el turno de una de las programaciones.',
             'ya tiene otra programación' => 'Revise las fechas y los días de la otra programación de este grupo.',
@@ -262,22 +278,203 @@ class ScheduleAvailabilityService
         $suggestions = [];
         $conflictText = mb_strtolower(implode(' ', $conflicts));
         foreach ($rules as $pattern => $suggestion) {
-            if (str_contains($conflictText, $pattern)) $suggestions[] = $suggestion;
+            if ($suggestion !== null && str_contains($conflictText, $pattern)) $suggestions[] = $suggestion;
         }
 
         if ($warnings !== []) {
             $suggestions[] = 'Consulte con el trabajador el estado de su solicitud pendiente. Si se aprueba, vuelva a validar la programación y ajuste las fechas o el personal si coincide.';
         }
 
-        if ($conflicts !== [] && $suggestions === []) {
-            $suggestions[] = 'Corrija los datos indicados y vuelva a validar la disponibilidad.';
+        return array_values(array_unique($suggestions));
+    }
+
+    private function addReplacementTarget(array &$targets, int $employeeId, array $definition, $employeeNames): void
+    {
+        $driverId = (int) $definition['driver_id'];
+        $helperIds = array_map('intval', $definition['helper_ids']);
+        $role = $employeeId === $driverId ? 'Conductor' : (in_array($employeeId, $helperIds, true) ? 'Ayudante' : null);
+        if ($role === null) return;
+
+        $employee = $employeeNames->get($employeeId);
+        $name = $employee ? trim($employee->first_name.' '.$employee->last_name) : 'El integrante';
+        $key = $definition['group_id'].'|'.$employeeId.'|'.$role;
+        $targets[$key] = [
+            'employee_id' => $employeeId,
+            'employee_name' => $name,
+            'role' => $role,
+            'definition' => $definition,
+        ];
+    }
+
+    private function replacementSuggestions(array $targets, $existing, array $plannedSlots): array
+    {
+        $suggestions = [];
+        foreach ($targets as $target) {
+            $definition = $target['definition'];
+            $dates = $this->serviceDates($definition);
+            if ($dates === []) continue;
+            $firstDate = $dates[0];
+            $lastDate = end($dates);
+            $role = $target['role'];
+            $crewIds = array_values(array_unique(array_merge([(int) $definition['driver_id']], array_map('intval', $definition['helper_ids']))));
+
+            $candidates = Employee::query()->where('status', true)
+                ->whereHas('employeeType', fn ($query) => $query->where('name', $role))
+                ->whereHas('contracts', function ($query) use ($firstDate, $lastDate) {
+                    $query->whereIn('contract_type', ['Permanente', 'Nombrado'])
+                        ->where('is_active', true)
+                        ->whereDate('start_date', '<=', $firstDate)
+                        ->where(function ($endQuery) use ($lastDate) {
+                            $endQuery->whereNull('end_date')->orWhereDate('end_date', '>=', $lastDate);
+                        });
+                })
+                ->whereNotIn('id', $crewIds)
+                ->orderBy('last_name')->orderBy('first_name')
+                ->limit(100)->get();
+
+            $availableCandidates = [];
+            foreach ($candidates as $candidate) {
+                if ($this->replacementIsAvailable($candidate->id, $definition, $dates, $existing, $plannedSlots)) {
+                    $availableCandidates[] = $candidate->full_name;
+                }
+                if (count($availableCandidates) >= 3) break;
+            }
+
+            if ($availableCandidates !== []) {
+                $suggestions[] = 'Sugerencia: Reemplazar a '.$target['employee_name'].' ('.$role.') por '.implode(', ', $availableCandidates).'.';
+            } else {
+                $suggestions[] = 'No se encontró un reemplazo disponible de tipo '.$role.' para '.$target['employee_name'].' en todas las fechas y turnos seleccionados.';
+            }
         }
 
         return array_values(array_unique($suggestions));
     }
 
+    private function replacementIsAvailable(int $employeeId, array $definition, array $dates, $existing, array $plannedSlots): bool
+    {
+        $firstDate = $dates[0];
+        $lastDate = end($dates);
+        $vacations = Vacation::query()->where('employee_id', $employeeId)
+            ->whereIn('status', ['Pendiente', 'Aprobada'])
+            ->whereDate('start_date', '<=', $lastDate)
+            ->whereDate('end_date', '>=', $firstDate)
+            ->get(['start_date', 'end_date']);
+
+        foreach ($dates as $date) {
+            foreach ($vacations as $vacation) {
+                if ($date >= $vacation->start_date->toDateString() && $date <= $vacation->end_date->toDateString()) return false;
+            }
+        }
+
+        if (Schema::hasTable('attendances')) {
+            $absenceExists = DB::table('attendances')->where('employee_id', $employeeId)
+                ->whereIn('status', ['absent'])
+                ->whereBetween('date', [$firstDate, $lastDate])
+                ->whereIn('date', $dates)->exists();
+            if ($absenceExists) return false;
+        }
+
+        foreach ($dates as $date) {
+            foreach ($existing as $schedule) {
+                foreach ([-1, 0, 1] as $dayOffset) {
+                    $otherDate = Carbon::parse($date)->addDays($dayOffset)->toDateString();
+                    if (! $this->runsOn($schedule, $otherDate)) continue;
+                    $otherCrew = array_values(array_unique(array_merge([(int) $schedule->driver_id], array_map('intval', $schedule->helper_ids ?? []))));
+                    if (! in_array($employeeId, $otherCrew, true)) continue;
+                    if ($this->timesOverlap($definition['shift_start_time'], $definition['shift_end_time'], $schedule->shift_start_time, $schedule->shift_end_time, $dayOffset)) return false;
+                }
+            }
+
+            foreach ($plannedSlots as $slot) {
+                $dayDifference = (int) ((strtotime($slot['date']) - strtotime($date)) / 86400);
+                if (abs($dayDifference) > 1 || ! in_array($employeeId, $slot['crew'], true)) continue;
+                if ($this->timesOverlap($definition['shift_start_time'], $definition['shift_end_time'], $slot['start'], $slot['end'], $dayDifference)) return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function groupRepeatedDateMessages(array $messages): array
+    {
+        $items = [];
+        $groups = [];
+        $order = 0;
+
+        foreach ($messages as $message) {
+            if (preg_match('/^(\d{4}-\d{2}-\d{2}):\s*(.+)$/u', $message, $matches)) {
+                $text = $matches[2];
+                $key = $text;
+                if (! isset($groups[$key])) {
+                    $groups[$key] = ['order' => $order++, 'dates' => []];
+                }
+                $groups[$key]['dates'][] = $matches[1];
+                continue;
+            }
+
+            $items[] = ['order' => $order++, 'message' => $message];
+        }
+
+        foreach ($groups as $text => $group) {
+            $dates = array_values(array_unique($group['dates']));
+            sort($dates);
+            if (count($dates) === 1) {
+                $message = $dates[0].': '.$text;
+            } else {
+                $formattedDates = $this->formatDateRanges($dates);
+                $message = rtrim($text, '.').' (fechas afectadas: '.implode(', ', $formattedDates).').';
+            }
+            $items[] = ['order' => $group['order'], 'message' => $message];
+        }
+
+        usort($items, fn ($first, $second) => $first['order'] <=> $second['order']);
+
+        return array_column($items, 'message');
+    }
+
+    private function formatDateRanges(array $dates): array
+    {
+        $dates = array_values(array_unique($dates));
+        sort($dates);
+        if ($dates === []) return [];
+
+        $ranges = [];
+        $start = Carbon::parse($dates[0]);
+        $end = $start->copy();
+
+        foreach (array_slice($dates, 1) as $date) {
+            $current = Carbon::parse($date);
+            if ($current->isSameDay($end->copy()->addDay())) {
+                $end = $current;
+                continue;
+            }
+
+            $ranges[] = $this->formatDateRange($start, $end);
+            $start = $current;
+            $end = $current->copy();
+        }
+
+        $ranges[] = $this->formatDateRange($start, $end);
+
+        return $ranges;
+    }
+
+    private function formatDateRange(Carbon $start, Carbon $end): string
+    {
+        if ($start->isSameDay($end)) return $start->format('d/m/Y');
+        if ($start->isSameMonth($end)) return $start->format('d').' al '.$end->format('d/m/Y');
+        if ($start->isSameYear($end)) return $start->format('d/m').' al '.$end->format('d/m/Y');
+
+        return $start->format('d/m/Y').' al '.$end->format('d/m/Y');
+    }
+
     private function addConflict(array &$conflicts, string $message): void
     {
-        if (count($conflicts) < 100) $conflicts[] = $message;
+        $conflicts[] = $message;
+    }
+
+    private function addWarning(array &$warnings, string $message): void
+    {
+        $warnings[] = $message;
     }
 }
