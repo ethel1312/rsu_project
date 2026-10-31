@@ -419,7 +419,8 @@ $(function () {
     $(document).on('click', '.day-add-change', function () {
         const type = $(this).data('type');
         const card = $(this).closest('.day-change-card');
-        const reasonType = card.find('.day-reason-preset').val();
+        const reasonId = card.find('.day-reason-preset').val();
+        const reasonType = reasonId ? card.find('.day-reason-preset option:selected').text() : '';
         const description = card.find('.day-reason-description').val().trim();
         if (!reasonType || description.length < 5) {
             Swal.fire('Motivo requerido', 'Seleccione un motivo e indique una descripción de al menos 5 caracteres.', 'info');
@@ -444,7 +445,7 @@ $(function () {
                 newValue: newId,
                 beforeLabel: type === 'shift' ? $('#dayShiftCurrent').val() : $('#dayVehicleCurrent').val(),
                 afterLabel: dayOptionText(select, newId),
-                reasonType,
+                reasonType, reasonId,
                 description
             };
         } else {
@@ -467,7 +468,7 @@ $(function () {
                 newValue: newId,
                 beforeLabel: dayEmployeeLabel(currentId),
                 afterLabel: dayEmployeeLabel(newId),
-                reasonType,
+                reasonType, reasonId,
                 description
             };
         }
@@ -479,7 +480,11 @@ $(function () {
             Swal.fire('Motivos demasiado largos', 'La suma de los motivos no debe superar los 500 caracteres.', 'info');
             return;
         }
-        if (existingIndex >= 0) dayEditChanges.splice(existingIndex, 1);
+        if (existingIndex >= 0) {
+            change.fromValue = dayEditChanges[existingIndex].fromValue;
+            change.beforeLabel = dayEditChanges[existingIndex].beforeLabel;
+            dayEditChanges.splice(existingIndex, 1);
+        }
         dayEditChanges.push(change);
         applyDayEditChanges();
         invalidateDayScheduleEditor();
@@ -883,31 +888,6 @@ $(function () {
             historyModal.show();
         }).fail(function () {
             Swal.fire('Error', 'No se pudo cargar el historial.', 'error');
-        });
-    });
-
-    $(document).on('click', '.btnFinishSchedule', function () {
-        const button = $(this);
-        Swal.fire({
-            title:'¿Finalizar programación?',
-            text:'La programación dejará de bloquear disponibilidad futura.',
-            icon:'question',
-            showCancelButton:true,
-            confirmButtonText:'Sí, finalizar',
-            cancelButtonText:'Cancelar'
-        }).then(function (result) {
-            if (!result.isConfirmed) return;
-            button.prop('disabled', true);
-            $.ajax({
-                url:button.data('url'), type:'PATCH',
-                data:{_token:$('meta[name="csrf-token"]').attr('content')},
-                headers:{Accept:'application/json'}
-            }).done(function (response) {
-                table.ajax.reload(null, false);
-                Swal.fire('Finalizada', response.message, 'success');
-            }).fail(function (xhr) {
-                Swal.fire('Error', xhr.responseJSON?.message || 'No se pudo finalizar la programación.', 'error');
-            }).always(function () { button.prop('disabled', false); });
         });
     });
 

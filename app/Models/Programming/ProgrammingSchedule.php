@@ -2,6 +2,7 @@
 
 namespace App\Models\Programming;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -30,5 +31,22 @@ class ProgrammingSchedule extends Model
     public function histories(): HasMany
     {
         return $this->hasMany(ProgrammingScheduleHistory::class);
+    }
+
+    public function runs(): HasMany
+    {
+        return $this->hasMany(ScheduleRun::class);
+    }
+
+    public function changes(): HasMany
+    {
+        return $this->hasMany(ScheduleChange::class);
+    }
+
+    public function runsOn(string $date): bool
+    {
+        return $date >= $this->start_date->toDateString() && $date <= $this->end_date->toDateString()
+            && ! in_array($date, $this->excluded_dates ?? [], true)
+            && in_array(Carbon::parse($date)->dayOfWeekIso, array_map('intval', $this->days_of_week ?? []), true);
     }
 }

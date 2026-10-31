@@ -15,7 +15,7 @@
                 <tbody>
                     @foreach ($histories as $history)
                         @php
-                            $labels = ['created' => 'Creada', 'created_mass' => 'Creada en programación masiva', 'updated' => 'Modificada', 'split' => 'Separada para reprogramación', 'split_segment' => 'Segmento conservado', 'reprogrammed' => 'Reprogramada', 'finished' => 'Finalizada', 'deleted' => 'Eliminada'];
+                            $labels = ['created' => 'Creada', 'created_mass' => 'Creada en programación masiva', 'updated' => 'Modificada', 'split' => 'Separada para reprogramación', 'split_segment' => 'Segmento conservado', 'reprogrammed' => 'Reprogramada', 'finished' => 'Finalizada', 'started' => 'Recorrido iniciado', 'reverted' => 'Cambio revertido', 'deleted' => 'Eliminada'];
                             $before = $history->before_data ?? [];
                             $after = $history->after_data ?? [];
                             $keys = array_unique(array_merge(array_keys($before), array_keys($after)));

@@ -4,31 +4,32 @@ use App\Http\Controllers\admin\AdminController;
 use App\Http\Controllers\admin\BrandController;
 use App\Http\Controllers\admin\BrandmdelController;
 use App\Http\Controllers\admin\ColorController;
-use App\Http\Controllers\admin\VehicleTypeController;
-use App\Http\Controllers\admin\VehicleController;
-
-use App\Http\Controllers\admin\Employees\EmployeeTypeController;
-use App\Http\Controllers\admin\Employees\EmployeeController;
-use App\Http\Controllers\admin\Employees\ContractController;
-use App\Http\Controllers\admin\Employees\VacationController;
 use App\Http\Controllers\admin\Employees\AttendanceController;
-use App\Http\Controllers\admin\Programming\ZoneController;
-use App\Http\Controllers\admin\Programming\ShiftController;
+use App\Http\Controllers\admin\Employees\ContractController;
+use App\Http\Controllers\admin\Employees\EmployeeController;
+use App\Http\Controllers\admin\Employees\EmployeeTypeController;
+use App\Http\Controllers\admin\Employees\VacationController;
+use App\Http\Controllers\admin\Programming\ChangeReasonController;
 use App\Http\Controllers\admin\Programming\HolidayController;
 use App\Http\Controllers\admin\Programming\PersonnelGroupController;
 use App\Http\Controllers\admin\Programming\ProgrammingScheduleController;
-
+use App\Http\Controllers\admin\Programming\ScheduleChangeController;
+use App\Http\Controllers\admin\Programming\ScheduleDashboardController;
+use App\Http\Controllers\admin\Programming\ShiftController;
+use App\Http\Controllers\admin\Programming\ZoneController;
+use App\Http\Controllers\admin\VehicleController;
+use App\Http\Controllers\admin\VehicleTypeController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [AdminController::class, 'index']);
 
 Route::resource('brands', BrandController::class)->names('admin.brands');
 
-Route::resource('models',BrandmdelController::class)->names('admin.models');
+Route::resource('models', BrandmdelController::class)->names('admin.models');
 
-Route::resource('colors',ColorController::class)->names('admin.colors');
+Route::resource('colors', ColorController::class)->names('admin.colors');
 
-Route::resource('vehicle_types',VehicleTypeController::class)->names('admin.vehicle_types');
+Route::resource('vehicle_types', VehicleTypeController::class)->names('admin.vehicle_types');
 
 Route::resource('vehicles', VehicleController::class)->names('admin.vehicles');
 
@@ -40,8 +41,7 @@ Route::post('vehicles/{id}/images', [VehicleController::class, 'uploadImage'])->
 Route::post('vehicles/images/{image_id}/profile', [VehicleController::class, 'setProfileImage'])->name('admin.vehicles.images.profile');
 Route::delete('vehicles/images/{image_id}', [VehicleController::class, 'deleteImage'])->name('admin.vehicles.images.destroy');
 
-
-//contratoss
+// contratoss
 // Contratos
 Route::get('contracts/employees', [ContractController::class, 'searchEmployees'])->name('admin.contracts.employees');
 Route::resource('contracts', ContractController::class)->names('admin.contracts');
@@ -65,7 +65,7 @@ Route::middleware('auth')->group(function () {
     Route::resource('attendances', AttendanceController::class)->except(['show'])->names('admin.attendances');
 });
 
-//VACACIONES
+// VACACIONES
 Route::get(
     'vacations/balance/{employeeId}',
     [VacationController::class, 'balanceSummary']
@@ -95,7 +95,7 @@ Route::get('zones/{zone}/map-data', [ZoneController::class, 'mapData'])
     ->name('admin.programming.zones.map-data');
 Route::resource('zones', ZoneController::class)->names('admin.programming.zones');
 
-//Turnos
+// Turnos
 Route::resource('shifts', ShiftController::class)
     ->except(['show'])
     ->middleware('auth')
@@ -129,7 +129,17 @@ Route::middleware('auth')->prefix('programming/schedules')->name('admin.programm
     Route::get('/{schedule}/history', [ProgrammingScheduleController::class, 'history'])->name('history');
     Route::get('/{schedule}/edit', [ProgrammingScheduleController::class, 'edit'])->name('edit');
     Route::put('/{schedule}', [ProgrammingScheduleController::class, 'update'])->name('update');
-    Route::patch('/{schedule}/finish', [ProgrammingScheduleController::class, 'finish'])->name('finish');
+    Route::patch('/{schedule}/finish', [ScheduleDashboardController::class, 'finish'])->name('finish');
     Route::delete('/{schedule}', [ProgrammingScheduleController::class, 'destroy'])->name('destroy');
 });
 
+Route::middleware('auth')->prefix('programming')->name('admin.programming.')->group(function () {
+    Route::resource('reasons', ChangeReasonController::class)->except('show');
+    Route::post('changes/preview', [ScheduleChangeController::class, 'preview'])->name('changes.preview');
+    Route::resource('changes', ScheduleChangeController::class)->except(['edit', 'update']);
+    Route::get('dashboard', [ScheduleDashboardController::class, 'index'])->name('dashboard.index');
+    Route::get('dashboard/{schedule}', [ScheduleDashboardController::class, 'show'])->name('dashboard.show');
+    Route::put('dashboard/{schedule}', [ScheduleDashboardController::class, 'update'])->name('dashboard.update');
+    Route::get('schedules/{schedule}/route', [ScheduleDashboardController::class, 'route'])->name('schedules.route');
+    Route::post('schedules/{schedule}/start', [ScheduleDashboardController::class, 'start'])->name('schedules.start');
+});

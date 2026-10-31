@@ -6,8 +6,8 @@ use App\Http\Controllers\Controller;
 
 class AdminController extends Controller
 {
-    function index()
+    public function index()
     {
-        return view('admin.index');
+        return redirect()->route('admin.programming.dashboard.index');
     }
 }
