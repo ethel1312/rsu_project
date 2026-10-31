@@ -10,9 +10,7 @@
 @if ($schedule)<input type="hidden" name="schedule_id" value="{{ $schedule->id }}">@endif
 <input type="hidden" name="availability_token" id="availabilityToken" value="">
 <div class="row">
-    @if ($mode === 'mass')
-        @include('admin.programming.schedules.template.mass-groups')
-    @else
+    @if ($mode === 'individual')
         <div class="col-md-6 mb-3">
             <label for="schedule_group_id" class="font-weight-bold">Grupo de personal *</label>
             <select class="form-control schedule-input schedule-select2" name="group_id" id="schedule_group_id" required>
@@ -26,16 +24,25 @@
 
         </div>
     @endif
-    <div class="{{ $mode === 'mass' ? 'col-md-6' : 'col-md-3' }} mb-3">
+    <div class="{{ $mode === 'mass' ? 'col-md-4' : 'col-md-3' }} mb-3">
         <label for="schedule_start_date" class="font-weight-bold">Fecha de inicio *</label>
         <input type="date" class="form-control schedule-input" name="start_date" id="schedule_start_date"
                value="{{ old('start_date', $singleDayDate ?? $schedule?->start_date?->format('Y-m-d')) }}" min="{{ now()->toDateString() }}" @readonly($singleDayDate) required>
     </div>
-    <div class="{{ $mode === 'mass' ? 'col-md-6' : 'col-md-3' }} mb-3">
+    <div class="{{ $mode === 'mass' ? 'col-md-4' : 'col-md-3' }} mb-3">
         <label for="schedule_end_date" class="font-weight-bold">Fecha de fin *</label>
         <input type="date" class="form-control schedule-input" name="end_date" id="schedule_end_date"
                value="{{ old('end_date', $singleDayDate ?? $schedule?->end_date?->format('Y-m-d')) }}" min="{{ now()->toDateString() }}" @readonly($singleDayDate) required>
     </div>
+
+    @if ($mode === 'mass')
+        <div class="col-md-4 d-flex align-items-end mb-3">
+            <button type="button" class="btn btn-outline-success w-100" id="btnValidateAvailability">
+                <i class="bi bi-check2-circle"></i> Validar disponibilidad
+            </button>
+        </div>
+        @include('admin.programming.schedules.template.mass-groups')
+    @endif
 
     @if ($mode === 'individual')
         <div class="col-12 mb-3">
@@ -108,20 +115,16 @@
                 @endif
             </fieldset>
         </div>
-    @else
-        <div class="col-12">
-            <div class="alert alert-info small mb-0">
-                Cada grupo se programará con su conductor, ayudantes y días de trabajo guardados en la plantilla. Si necesita cambiarlos, use la programación individual.
-            </div>
-        </div>
     @endif
 </div>
 
 <div class="alert d-none mt-3" id="scheduleAvailability" role="status" aria-live="polite"></div>
-<div class="d-flex flex-wrap justify-content-between align-items-center mt-4" style="gap:10px">
-    <button type="button" class="btn btn-outline-primary" id="btnValidateAvailability">
-        <i class="bi bi-check2-circle"></i> Validar disponibilidad
-    </button>
+<div class="d-flex flex-wrap {{ $mode === 'mass' ? 'justify-content-end' : 'justify-content-between' }} align-items-center mt-4" style="gap:10px">
+    @if ($mode === 'individual')
+        <button type="button" class="btn btn-outline-primary" id="btnValidateAvailability">
+            <i class="bi bi-check2-circle"></i> Validar disponibilidad
+        </button>
+    @endif
     <div class="d-flex" style="gap:8px">
         <button type="button" class="btn btn-modal-cancelar" data-bs-dismiss="modal">Cancelar</button>
         <button type="submit" class="btn btn-modal-guardar" id="btnGuardarSchedule" disabled>

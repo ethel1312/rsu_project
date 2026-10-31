@@ -1,6 +1,7 @@
 <div class="d-flex justify-content-center flex-nowrap schedule-actions-row" style="gap:6px">
     <button type="button" class="btn btn-sm schedule-action schedule-action-history btnScheduleHistory"
             data-url="{{ route('admin.programming.schedules.history', $schedule) }}"
+            data-title="{{ $schedule->group_name }} · {{ \Carbon\Carbon::parse($serviceDate)->format('d/m/Y') }}"
             title="Ver historial" aria-label="Ver historial">
         <i class="bi bi-clock-history"></i>
     </button>

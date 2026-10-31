@@ -137,9 +137,15 @@ class ProgrammingScheduleController extends Controller
         $definitions = $this->definitions($request);
         $excludeScheduleId = $request->filled('schedule_id') ? $request->integer('schedule_id') : null;
         if ($excludeScheduleId) {
-            ProgrammingSchedule::query()->where('status', 'Programada')->findOrFail($excludeScheduleId);
+            ProgrammingSchedule::query()->whereIn('status', ['Programada', 'Reprogramado'])->findOrFail($excludeScheduleId);
         }
         $result = $this->availability->check($definitions, $excludeScheduleId);
+        $crewAvailability = [];
+        foreach ($definitions as $definitionIndex => $definition) {
+            foreach ($result['crew_availability'][$definitionIndex] ?? [] as $employeeId => $issues) {
+                $crewAvailability[$definition['group_id']][(string) $employeeId] = $issues;
+            }
+        }
         $hardErrors = $result['hard_conflicts'];
         if ($result['available_service_days'] === 0 && $hardErrors === []) {
             $hardErrors[] = 'Ninguna fecha del periodo está disponible para programar. Revise las fechas omitidas.';
@@ -151,6 +157,8 @@ class ProgrammingScheduleController extends Controller
                 'conflicts' => $hardErrors,
                 'skipped' => $result['skipped'],
                 'warnings' => $result['warnings'],
+                'crew_availability' => $crewAvailability,
+                'group_results' => $result['group_results'],
                 'service_days' => $result['service_days'],
                 'available_service_days' => $result['available_service_days'],
                 'skipped_service_days' => $result['skipped_service_days'],
@@ -166,6 +174,8 @@ class ProgrammingScheduleController extends Controller
             'program_count' => count($definitions),
             'skipped' => $result['skipped'],
             'warnings' => $result['warnings'],
+            'crew_availability' => $crewAvailability,
+            'group_results' => $result['group_results'],
             'suggestions' => $result['suggestions'],
             'message' => 'Se programarán '.$result['available_service_days'].' fechas disponibles y se omitirán '.$result['skipped_service_days'].' por inconsistencias.',
         ]);
@@ -222,7 +232,7 @@ class ProgrammingScheduleController extends Controller
             return response('La fecha seleccionada no pertenece a esta programación.', 422);
         }
 
-        return view('admin.programming.schedules.edit', $this->formData($schedule, $serviceDate));
+        return view('admin.programming.schedules.edit-day', $this->formData($schedule, $serviceDate));
     }
 
     public function update(Request $request, ProgrammingSchedule $schedule)
@@ -295,16 +305,19 @@ class ProgrammingScheduleController extends Controller
             'helper_names' => $schedule->helper_names ?? [],
             'days_of_week' => $schedule->days_of_week ?? [],
         ];
+        $beforeDay = $this->snapshot($schedule);
+        $beforeDay['periodo'] = Carbon::parse($serviceDate)->format('d/m/Y').' - '.Carbon::parse($serviceDate)->format('d/m/Y');
+        $beforeDay['dias'] = PersonnelGroup::WEEKDAYS[Carbon::parse($serviceDate)->dayOfWeekIso] ?? '';
         $remainingSegments = $this->availableSegments($oldDefinition, [$serviceDate]);
         $batchUuid = $schedule->batch_uuid ?: (count($remainingSegments) > 1 ? (string) Str::uuid() : null);
 
-        DB::transaction(function () use ($schedule, $remainingSegments, $newDefinition, $batchUuid, $reason) {
+        DB::transaction(function () use ($schedule, $remainingSegments, $newDefinition, $batchUuid, $reason, $beforeDay) {
             $before = $this->snapshot($schedule);
             if ($remainingSegments === []) {
                 $attributes = $this->attributes($newDefinition, $schedule->batch_uuid);
                 unset($attributes['created_by']);
                 $schedule->update($attributes);
-                $this->recordHistory($schedule, 'reprogrammed', $before, $this->snapshot($schedule), 'Motivo: '.$reason);
+                $this->recordHistory($schedule, 'reprogrammed', $beforeDay, $this->snapshot($schedule), 'Motivo: '.$reason);
                 return;
             }
 
@@ -320,7 +333,7 @@ class ProgrammingScheduleController extends Controller
             }
 
             $reprogrammed = ProgrammingSchedule::create($this->attributes($newDefinition, $batchUuid));
-            $this->recordHistory($reprogrammed, 'reprogrammed', null, $this->snapshot($reprogrammed), 'Motivo: '.$reason);
+            $this->recordHistory($reprogrammed, 'reprogrammed', $beforeDay, $this->snapshot($reprogrammed), 'Motivo: '.$reason);
         });
 
         return response()->json([
@@ -361,7 +374,13 @@ class ProgrammingScheduleController extends Controller
     public function history(ProgrammingSchedule $schedule)
     {
         $histories = $schedule->histories()->with('actor')->latest()->get();
-        return view('admin.programming.schedules.history', compact('schedule', 'histories'));
+        $labelPattern = addcslashes($schedule->group_name.' · ', '\\%_').'%';
+        $splitHistories = ProgrammingScheduleHistory::query()
+            ->where('action', 'split')
+            ->where('schedule_label', 'like', $labelPattern)
+            ->latest()->get();
+        $historyRows = $this->scheduleHistoryRows($histories, $splitHistories, $schedule);
+        return view('admin.programming.schedules.history-detail', compact('schedule', 'historyRows'));
     }
     public function allHistory()
     {
@@ -385,6 +404,82 @@ class ProgrammingScheduleController extends Controller
             })->latest()->get();
 
         return view('admin.programming.personnel-groups.details', compact('personnelGroup', 'schedules', 'histories'));
+    }
+
+    private function scheduleHistoryRows($histories, $splitHistories = null, ?ProgrammingSchedule $schedule = null)
+    {
+        $rows = collect();
+        $splitHistories ??= collect();
+        $fields = [
+            'turno' => ['Cambio de turno', 'Cambio de turno'],
+            'vehiculo' => ['Cambio de vehículo', 'Cambio de vehículo'],
+            'conductor' => ['Cambio de conductor', 'Cambio de conductor'],
+        ];
+
+        foreach ($histories->whereIn('action', ['reprogrammed', 'updated']) as $history) {
+            $before = $history->before_data ?? [];
+            $after = $history->after_data ?? [];
+            $reasonText = preg_replace('/^Motivo:\s*/u', '', (string) $history->notes);
+            $reasonParts = preg_split('/\s*\|\s*(?=Cambio de )/u', $reasonText, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+            if ($before === [] && $schedule) {
+                $splitHistory = $splitHistories->first(function ($candidate) use ($reasonText, $schedule) {
+                    $candidateReason = preg_replace('/^.*?Motivo:\s*/u', '', (string) $candidate->notes);
+                    if ($candidateReason !== $reasonText) return false;
+
+                    $period = $candidate->before_data['periodo'] ?? null;
+                    if (! $period || ! preg_match('/^(\d{2}\/\d{2}\/\d{4})\s*-\s*(\d{2}\/\d{2}\/\d{4})$/u', $period, $dates)) return false;
+
+                    try {
+                        $periodStart = Carbon::createFromFormat('d/m/Y', $dates[1])->toDateString();
+                        $periodEnd = Carbon::createFromFormat('d/m/Y', $dates[2])->toDateString();
+                    } catch (\Throwable) {
+                        return false;
+                    }
+
+                    $serviceDate = $schedule->start_date->toDateString();
+                    return $periodStart <= $serviceDate && $serviceDate <= $periodEnd;
+                });
+                $before = $splitHistory?->before_data ?? [];
+            }
+
+            foreach ($fields as $key => [$type, $reasonPrefix]) {
+                if (! array_key_exists($key, $before) || ! array_key_exists($key, $after) || $before[$key] === $after[$key]) continue;
+                $reason = collect($reasonParts)->first(fn ($part) => str_starts_with($part, $reasonPrefix));
+                $rows->push([
+                    'date' => $history->created_at?->timezone('America/Lima'),
+                    'type' => $type,
+                    'before' => $before[$key],
+                    'after' => $after[$key],
+                    'reason' => $this->cleanChangeReason($reason ?: $reasonText),
+                ]);
+            }
+
+            if (array_key_exists('ayudantes', $before) && array_key_exists('ayudantes', $after) && $before['ayudantes'] !== $after['ayudantes']) {
+                $previousHelpers = array_values(array_filter(array_map('trim', explode(',', (string) $before['ayudantes']))));
+                $newHelpers = array_values(array_filter(array_map('trim', explode(',', (string) $after['ayudantes']))));
+                $removedHelpers = array_values(array_diff($previousHelpers, $newHelpers));
+                $addedHelpers = array_values(array_diff($newHelpers, $previousHelpers));
+                $helperReasons = collect($reasonParts)->filter(fn ($part) => str_starts_with($part, 'Cambio de ayudante'))->values();
+
+                foreach (array_unique(array_merge($removedHelpers, $addedHelpers)) as $index => $helperName) {
+                    $rows->push([
+                        'date' => $history->created_at?->timezone('America/Lima'),
+                        'type' => 'Cambio de ayudante',
+                        'before' => $removedHelpers[$index] ?? '—',
+                        'after' => $addedHelpers[$index] ?? '—',
+                        'reason' => $this->cleanChangeReason($helperReasons[$index] ?? $reasonText),
+                    ]);
+                }
+            }
+        }
+
+        return $rows;
+    }
+
+    private function cleanChangeReason(string $reason): string
+    {
+        return trim(preg_replace('/^Cambio de (?:turno|vehículo|conductor|ayudante)(?:\s*\([^)]*\))?:\s*/u', '', $reason));
     }
 
     private function formData(?ProgrammingSchedule $schedule = null, ?string $singleDayDate = null): array
@@ -440,7 +535,7 @@ class ProgrammingScheduleController extends Controller
             $rules['groups'] = ['sometimes', 'array'];
             $rules['groups.*.driver_id'] = ['required', 'integer', 'exists:employees,id'];
             $rules['groups.*.helper_ids'] = ['required', 'array', 'min:1'];
-            $rules['groups.*.helper_ids.*'] = ['required', 'integer', 'distinct', 'exists:employees,id'];
+            $rules['groups.*.helper_ids.*'] = ['required', 'integer', 'exists:employees,id'];
             $rules['holidays_configured'] = ['sometimes', 'boolean'];
             $rules['holiday_ids'] = ['sometimes', 'array'];
             $rules['holiday_ids.*'] = ['integer', 'distinct', 'exists:holidays,id'];
@@ -456,6 +551,17 @@ class ProgrammingScheduleController extends Controller
         }
 
         $data = $request->validate($rules);
+        if ($mode === 'mass') {
+            foreach ($data['group_ids'] as $groupId) {
+                $helperIds = array_map('intval', $data['groups'][$groupId]['helper_ids'] ?? []);
+                if (count($helperIds) !== count(array_unique($helperIds))) {
+                    throw ValidationException::withMessages([
+                        'groups.'.$groupId.'.helper_ids' => 'No repita un ayudante dentro del mismo grupo.',
+                    ]);
+                }
+            }
+        }
+
         $groupIds = $mode === 'mass'
             ? array_map('intval', $data['group_ids'])
             : [(int) $data['group_id']];
