@@ -1,5 +1,13 @@
 <?php
 
+use JeroenNoten\LaravelAdminLte\Menu\Filters\ActiveFilter;
+use JeroenNoten\LaravelAdminLte\Menu\Filters\ClassesFilter;
+use JeroenNoten\LaravelAdminLte\Menu\Filters\DataFilter;
+use JeroenNoten\LaravelAdminLte\Menu\Filters\GateFilter;
+use JeroenNoten\LaravelAdminLte\Menu\Filters\HrefFilter;
+use JeroenNoten\LaravelAdminLte\Menu\Filters\LangFilter;
+use JeroenNoten\LaravelAdminLte\Menu\Filters\SearchFilter;
+
 /*
 |--------------------------------------------------------------------------
 | Laravel AdminLTE Configuration
@@ -797,7 +805,6 @@ return [
         //     'text' => 'Buscar',
         // ],
 
-
         [
             'text' => 'Gestión de Vehículos',
             'icon' => 'bi bi-truck',
@@ -857,22 +864,23 @@ return [
                     'text' => 'Vacaciones',
                     'route' => 'admin.vacations.index',
                     'icon' => 'bi bi-airplane',
-                ]
+                ],
             ],
         ],
         [
             'text' => 'Programación',
             'icon' => 'bi bi-calendar3',
             'submenu' => [
+                ['text' => 'Dashboard diario', 'route' => 'admin.programming.dashboard.index', 'icon' => 'bi bi-speedometer2'],
                 [
                     'text' => 'Turnos',
                     'route' => 'admin.programming.shifts.index',
                     'icon' => 'bi bi-clock',
                 ],
                 [
-                    'text'  => 'Zonas',
+                    'text' => 'Zonas',
                     'route' => 'admin.programming.zones.index',
-                    'icon'  => 'bi bi-geo-alt',
+                    'icon' => 'bi bi-geo-alt',
                 ],
                 [
                     'text' => 'Feriados',
@@ -894,7 +902,10 @@ return [
         [
             'text' => 'Gestión de Cambios',
             'icon' => 'bi bi-arrow-left-right',
-            'url' => '#',
+            'submenu' => [
+                ['text' => 'Motivos', 'route' => 'admin.programming.reasons.index', 'icon' => 'bi bi-list-ul'],
+                ['text' => 'Cambios', 'route' => 'admin.programming.changes.index', 'icon' => 'bi bi-arrow-repeat'],
+            ],
         ],
         [
             'text' => 'Gestión de Usuarios',
@@ -916,13 +927,13 @@ return [
     */
 
     'filters' => [
-        JeroenNoten\LaravelAdminLte\Menu\Filters\GateFilter::class,
-        JeroenNoten\LaravelAdminLte\Menu\Filters\HrefFilter::class,
-        JeroenNoten\LaravelAdminLte\Menu\Filters\SearchFilter::class,
-        JeroenNoten\LaravelAdminLte\Menu\Filters\ActiveFilter::class,
-        JeroenNoten\LaravelAdminLte\Menu\Filters\ClassesFilter::class,
-        JeroenNoten\LaravelAdminLte\Menu\Filters\LangFilter::class,
-        JeroenNoten\LaravelAdminLte\Menu\Filters\DataFilter::class,
+        GateFilter::class,
+        HrefFilter::class,
+        SearchFilter::class,
+        ActiveFilter::class,
+        ClassesFilter::class,
+        LangFilter::class,
+        DataFilter::class,
     ],
 
     /*
@@ -1246,5 +1257,3 @@ return [
 
     'spa_navigation' => true,
 ];
-
-

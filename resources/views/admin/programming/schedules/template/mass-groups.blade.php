@@ -8,12 +8,6 @@
     </div>
     <small class="text-muted">Se generarán los grupos marcados del turno seleccionado. Puede ajustar su personal antes de validar.</small>
 </div>
-<div class="col-12 mb-3">
-    <h6 class="schedule-mass-section-title mb-2"><i class="bi bi-calendar-event me-1" aria-hidden="true"></i> Días feriados en el rango seleccionado:</h6>
-    <input type="hidden" name="holidays_configured" id="holidaysConfigured" value="0">
-    <div id="massHolidays" class="border rounded p-3 mt-2" aria-live="polite">Seleccione las fechas para ver los feriados.</div>
-    <small class="text-muted">Los feriados marcados se omiten. Desmarque un feriado solo si se trabajará ese día.</small>
-</div>
 <div class="col-12 mb-2"><h6 class="schedule-mass-section-title mb-0">Grupos de trabajo</h6></div>
 @forelse ($groups as $group)
     <div class="col-md-6 col-xl-4 mb-3 mass-group" data-shift="{{ $group->shift_id }}">

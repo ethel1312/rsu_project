@@ -35,6 +35,7 @@
                value="{{ old('end_date', $singleDayDate ?? $schedule?->end_date?->format('Y-m-d')) }}" min="{{ now()->toDateString() }}" @readonly($singleDayDate) required>
     </div>
 
+    @include('admin.programming.schedules.template.holidays')
     @if ($mode === 'mass')
         <div class="col-md-4 d-flex align-items-end mb-3">
             <button type="button" class="btn btn-outline-success w-100" id="btnValidateAvailability">

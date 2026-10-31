@@ -14,7 +14,7 @@
     @endforeach
     <input type="hidden" name="change_reason" id="dayChangeReason" value="">
     <input type="hidden" name="availability_token" id="availabilityToken" value="">
-    <input type="hidden" id="dayChangesPayload" value="[]">
+    <input type="hidden" name="changes_payload" id="dayChangesPayload" value="[]">
 
     <div id="scheduleErrors" class="alert alert-danger d-none" role="alert"></div>
     <div class="alert alert-info small mb-3">
