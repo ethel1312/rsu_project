@@ -35,10 +35,14 @@ class ScheduleChangeService
         if (! $schedule->runsOn($date)) {
             $this->fail('La fecha no pertenece a esta programación.');
         }
-        if (! in_array($schedule->status, ['Programada', 'Reprogramado'], true)
-            || $schedule->runs()->whereDate('service_date', $date)->whereNotNull('started_at')->exists()
-            || Carbon::parse($date.' '.$schedule->shift_start_time, 'America/Lima')->lte(now('America/Lima'))) {
-            $this->fail('Solo se pueden cambiar recorridos que aún no inician.');
+        if (! in_array($schedule->status, ['Programada', 'Reprogramado'], true)) {
+            $this->fail('La programación no está en un estado que permita cambios.');
+        }
+        if ($schedule->runs()->whereDate('service_date', $date)->whereNotNull('started_at')->exists()) {
+            $this->fail('El recorrido ya se inició y no admite cambios.');
+        }
+        if (Carbon::parse($date.' '.$schedule->shift_start_time, 'America/Lima')->lte(now('America/Lima'))) {
+            $this->fail('El turno '.$schedule->shift_name.' ya comenzó a las '.substr($schedule->shift_start_time, 0, 5).'; no se puede modificar después de su inicio.');
         }
     }
 

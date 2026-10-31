@@ -1,26 +1,103 @@
-@extends('admin.programming.operations-layout', ['pageTitle' => 'Nuevo cambio masivo'])
-@section('operations')
-<form id="massChange" class="card operation-card operation-form"><div class="card-body">@csrf
-<div id="changeError" class="alert alert-danger d-none" role="alert"></div>
-<div class="row"><div class="col-md-3"><label for="start_date">Fecha de inicio *</label><input class="form-control" type="date" id="start_date" name="start_date" min="{{ now('America/Lima')->toDateString() }}" required></div><div class="col-md-3"><label for="end_date">Fecha de fin *</label><input class="form-control" type="date" id="end_date" name="end_date" required></div><div class="col-md-3"><label for="zone_id">Zona</label><select class="form-select" id="zone_id" name="zone_id"><option value="">Todas las zonas</option>@foreach($zones as $zone)<option value="{{ $zone->id }}">{{ $zone->name }}</option>@endforeach</select></div><div class="col-md-3"><label for="changeType">Tipo de cambio *</label><select class="form-select" id="changeType" name="type">@foreach(\App\Models\Programming\ScheduleChange::TYPES as $key=>$label)<option value="{{ $key }}">{{ $label }}</option>@endforeach</select></div></div>
-<div class="row"><div class="col-md-6"><label for="old_id">Recurso a reemplazar *</label><select class="form-select" id="old_id" name="old_id" required></select></div><div class="col-md-6"><label for="new_id">Nuevo recurso *</label><select class="form-select" id="new_id" name="new_id" required></select></div></div>
-@include('admin.programming.changes.reason')
-<div class="alert alert-info">Se validarán todas las fechas seleccionadas. Solo se aplicará la operación completa si los recorridos aún no inician y los recursos están disponibles.</div>
-<button class="btn btn-primary" id="previewButton">Revisar cambios</button><a class="btn btn-outline-secondary" href="{{ route('admin.programming.changes.index') }}">Cancelar</a>
-</div></form>
-<section id="preview" class="card operation-card d-none"><div class="card-header bg-primary text-white">Confirmar operación masiva</div><div class="card-body"><p id="previewSummary"></p><div class="table-responsive"><table class="table"><thead><tr><th>Programación</th><th>Fecha</th><th>Zona</th><th>Antes</th><th>Después</th></tr></thead><tbody id="previewRows"></tbody></table></div><p>La operación afectará a las programaciones indicadas y dejará un registro en cada historial. Una reversión posterior deberá respetar la disponibilidad y los cambios siguientes.</p><button class="btn btn-success" id="confirmChange">Confirmar y aplicar</button><button class="btn btn-outline-secondary" id="cancelPreview">Volver a editar</button></div></section>
-@endsection
-@section('operation_js')
-<script>
-@php($catalogData = ['shift'=>$shifts->map(fn($s)=>['id'=>$s->id,'label'=>$s->name.' ('.$s->start_time.'–'.$s->end_time.')']), 'vehicle'=>$vehicles->map(fn($v)=>['id'=>$v->id,'label'=>$v->plate.' · '.$v->name]), 'driver'=>$employees->filter(fn($e)=>$e->employeeType?->name === 'Conductor')->map(fn($e)=>['id'=>$e->id,'label'=>$e->full_name])->values(), 'helper'=>$employees->filter(fn($e)=>$e->employeeType?->name === 'Ayudante')->map(fn($e)=>['id'=>$e->id,'label'=>$e->full_name])->values()])
-const catalogs = @json($catalogData);
-const form = document.getElementById('massChange'); let token = null;
-function resources(){for(const id of ['old_id','new_id']){const select=document.getElementById(id);select.replaceChildren(new Option('Seleccione un recurso',''));for(const item of catalogs[document.getElementById('changeType').value])select.add(new Option(item.label,item.id));}}
-resources();document.getElementById('changeType').addEventListener('change',resources);
-function invalidate(){token=null;document.getElementById('preview').classList.add('d-none');}form.addEventListener('input',invalidate);form.addEventListener('change',invalidate);document.getElementById('cancelPreview').onclick=invalidate;
-async function send(url,confirming){const data=new FormData(form);if(confirming){data.append('confirmed','1');data.append('preview_token',token);}const response=await fetch(url,{method:'POST',body:data,headers:{Accept:'application/json'}});const result=await response.json();if(!response.ok)throw new Error(Object.values(result.errors||{message:[result.message||'No se pudo completar la operación.']}).flat().join(' '));return result;}
-function error(e){const box=document.getElementById('changeError');box.textContent=e.message;box.classList.remove('d-none');box.scrollIntoView({block:'center'});}
-form.addEventListener('submit',async e=>{e.preventDefault();const button=document.getElementById('previewButton');button.disabled=true;invalidate();document.getElementById('changeError').classList.add('d-none');try{const data=await send(@json(route('admin.programming.changes.preview')),false);token=data.token;const rows=document.getElementById('previewRows');rows.replaceChildren();const key={shift:'turno',vehicle:'vehiculo',driver:'conductor',helper:'ayudantes'}[document.getElementById('changeType').value];for(const row of data.rows){const tr=document.createElement('tr');for(const value of ['#'+row.schedule_id,row.date,row.zone,row.before[key],row.after[key]]){const td=document.createElement('td');td.textContent=value;tr.appendChild(td);}rows.appendChild(tr);}document.getElementById('previewSummary').textContent=data.count+' programaciones recibirán el cambio. Motivo: '+document.getElementById('reason_id').selectedOptions[0].textContent;document.getElementById('preview').classList.remove('d-none');document.getElementById('preview').scrollIntoView({behavior:'smooth'});}catch(e){error(e);}finally{button.disabled=false;}});
-document.getElementById('confirmChange').onclick=async function(){if(!token)return;this.disabled=true;try{const data=await send(@json(route('admin.programming.changes.store')),true);location.href=data.redirect;}catch(e){invalidate();error(e);}finally{this.disabled=false;}};
-</script>
-@endsection
+<form id="massChangeForm" method="post">
+    @csrf
+    <div id="massChangeError" class="alert alert-danger d-none" role="alert"></div>
+
+    <div class="row">
+        <div class="col-xl-3 col-md-6 mb-3">
+            <label for="massStartDate">Fecha de Inicio *</label>
+            <input class="form-control" type="date" id="massStartDate" name="start_date" min="{{ now('America/Lima')->toDateString() }}" required>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <label for="massEndDate">Fecha de Fin *</label>
+            <input class="form-control" type="date" id="massEndDate" name="end_date" min="{{ now('America/Lima')->toDateString() }}" max="{{ now('America/Lima')->addYear()->toDateString() }}" required>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <label for="massZoneIds">Zonas (Opcional)</label>
+            <select class="form-control" id="massZoneIds" name="zone_ids[]" multiple data-placeholder="Seleccione las zonas">
+                @foreach($zones as $zone)<option value="{{ $zone->id }}">{{ $zone->name }}</option>@endforeach
+            </select>
+            <small class="mass-change-help">Déjelo vacío para aplicar a todas las zonas.</small>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <label for="massChangeType">Tipo de Cambio *</label>
+            <select class="form-control" id="massChangeType" name="type" required>
+                @foreach(\App\Models\Programming\ScheduleChange::TYPES as $key => $label)<option value="{{ $key }}">{{ $label }}</option>@endforeach
+            </select>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <label for="massOldId">Recurso a Reemplazar *</label>
+            <select class="form-control mass-resource-select" id="massOldId" name="old_id" required>
+                <option value="">Seleccione un recurso</option>
+                @foreach($shifts as $shift)<option data-kind="shift" value="{{ $shift->id }}">{{ $shift->name }} ({{ substr($shift->start_time,0,5) }}–{{ substr($shift->end_time,0,5) }})</option>@endforeach
+                @foreach($vehicles as $vehicle)<option data-kind="vehicle" value="{{ $vehicle->id }}">{{ $vehicle->plate }} · {{ $vehicle->name }}</option>@endforeach
+                @foreach($employees as $employee)
+                    @if($employee->employeeType?->name === 'Conductor')<option data-kind="driver" value="{{ $employee->id }}">{{ $employee->full_name }} · DNI {{ $employee->dni }}</option>@endif
+                    @if($employee->employeeType?->name === 'Ayudante')<option data-kind="helper" value="{{ $employee->id }}">{{ $employee->full_name }} · DNI {{ $employee->dni }}</option>@endif
+                @endforeach
+            </select>
+        </div>
+        <div class="col-md-6 mb-3">
+            <label for="massNewId">Nuevo Recurso *</label>
+            <select class="form-control mass-resource-select" id="massNewId" name="new_id" required>
+                <option value="">Seleccione un nuevo recurso</option>
+                @foreach($shifts as $shift)<option data-kind="shift" value="{{ $shift->id }}">{{ $shift->name }} ({{ substr($shift->start_time,0,5) }}–{{ substr($shift->end_time,0,5) }})</option>@endforeach
+                @foreach($vehicles as $vehicle)<option data-kind="vehicle" value="{{ $vehicle->id }}">{{ $vehicle->plate }} · {{ $vehicle->name }}</option>@endforeach
+                @foreach($employees as $employee)
+                    @if($employee->employeeType?->name === 'Conductor')<option data-kind="driver" value="{{ $employee->id }}">{{ $employee->full_name }} · DNI {{ $employee->dni }}</option>@endif
+                    @if($employee->employeeType?->name === 'Ayudante')<option data-kind="helper" value="{{ $employee->id }}">{{ $employee->full_name }} · DNI {{ $employee->dni }}</option>@endif
+                @endforeach
+            </select>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <label for="massReasonId">Motivo Predefinido *</label>
+            <select class="form-control" id="massReasonId" name="reason_id" required>
+                <option value="">Seleccione un motivo predefinido</option>
+                @foreach($reasons as $reason)
+                    <option value="{{ $reason->id }}" data-name="{{ $reason->name }}">{{ $reason->name }}{{ $reason->description ? ' · '.$reason->description : '' }}</option>
+                @endforeach
+            </select>
+            <small class="mass-change-help">Seleccione el motivo que se registrará en el historial.</small>
+        </div>
+        <div class="col-md-6 mb-3">
+            <label for="massAdditionalDetail">Descripción Adicional (Opcional)</label>
+            <textarea class="form-control" id="massAdditionalDetail" maxlength="1000" rows="2" placeholder="Agregue detalles adicionales"></textarea>
+            <small class="mass-change-help">Complemento al motivo predefinido.</small>
+        </div>
+    </div>
+
+    <div class="form-group mb-3">
+        <label for="massCompleteDetail">Descripción Completa del Cambio *</label>
+        <textarea class="form-control mass-change-complete" id="massCompleteDetail" name="detail" rows="3" maxlength="2000" placeholder="Se completará al seleccionar un motivo" readonly required></textarea>
+        <small class="mass-change-help">Se completa con el motivo seleccionado y los detalles adicionales.</small>
+    </div>
+
+    <div class="alert alert-info mb-3"><i class="bi bi-info-circle-fill me-1"></i> Se revisarán todas las programaciones afectadas antes de aplicar el cambio. La operación se guardará solo si todas las fechas cumplen las reglas de disponibilidad.</div>
+    <div class="d-flex justify-content-end flex-wrap gap-2">
+        <button type="button" class="btn btn-modal-cancelar" data-bs-dismiss="modal"><i class="bi bi-x-lg me-1"></i> Cancelar</button>
+        <button type="submit" class="btn btn-modal-guardar" id="massPreviewButton"><i class="bi bi-search me-1"></i> Revisar cambios</button>
+    </div>
+</form>
+
+<section id="massPreview" class="card operation-card mt-4 d-none">
+    <div class="card-header bg-primary text-white font-weight-bold">Confirmar operación masiva</div>
+    <div class="card-body">
+        <p id="massPreviewSummary" class="font-weight-bold"></p>
+        <div class="table-responsive">
+            <table class="table table-striped table-sm">
+                <thead><tr><th>Programación</th><th>Fecha</th><th>Zona</th><th>Antes</th><th>Después</th></tr></thead>
+                <tbody id="massPreviewRows"></tbody>
+            </table>
+        </div>
+        <p class="text-muted">Cada programación conservará el detalle del cambio en su historial. Si una fecha ya no está disponible, deberá revisar el cambio antes de confirmarlo.</p>
+        <div class="d-flex justify-content-end flex-wrap gap-2">
+            <button type="button" id="massCancelPreview" class="btn btn-outline-secondary">Volver a editar</button>
+            <button type="button" id="massConfirmButton" class="btn btn-success"><i class="bi bi-check-lg me-1"></i> Confirmar y aplicar</button>
+        </div>
+    </div>
+</section>

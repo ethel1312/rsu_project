@@ -1,5 +1,9 @@
 <div class="d-flex justify-content-center flex-nowrap schedule-actions-row" style="gap:6px">
-    <a class="btn btn-sm btn-outline-primary" href="{{ route('admin.programming.schedules.route', ['schedule'=>$schedule,'date'=>$serviceDate]) }}" title="{{ $run?->finished_at ? 'Ver recorrido seguido' : 'Registrar recorrido' }}"><i class="bi bi-map"></i> {{ $run?->finished_at ? 'Ver recorrido' : 'Recorrido' }}</a>
+    @if ($run?->finished_at)
+        <a class="btn btn-sm btn-outline-primary" href="{{ route('admin.programming.schedules.route', ['schedule'=>$schedule,'date'=>$serviceDate]) }}" title="Ver recorrido seguido"><i class="bi bi-map me-1"></i>Ver recorrido</a>
+    @elseif (in_array($schedule->status, ['Programada', 'Reprogramado'], true) && $serviceDate === now('America/Lima')->toDateString())
+        <a class="btn btn-sm btn-outline-primary" href="{{ route('admin.programming.schedules.route', ['schedule'=>$schedule,'date'=>$serviceDate]) }}" title="{{ $run?->started_at ? 'Finalizar recorrido' : 'Iniciar recorrido' }}"><i class="bi bi-map me-1"></i>{{ $run?->started_at ? 'Finalizar recorrido' : 'Iniciar recorrido' }}</a>
+    @endif
     <button type="button" class="btn btn-sm schedule-action schedule-action-history btnScheduleHistory"
             data-url="{{ route('admin.programming.schedules.history', $schedule) }}"
             data-title="{{ $schedule->group_name }} · {{ \Carbon\Carbon::parse($serviceDate)->format('d/m/Y') }}"

@@ -40,13 +40,16 @@ class ScheduleDashboardController extends Controller
     {
         $date = $request->validate(['date' => ['required', 'date_format:Y-m-d']])['date'];
         abort_unless($schedule->runsOn($date), 404);
-        $editable = true;
-        try {
-            $service->assertEditable($schedule, $date);
-        } catch (ValidationException $e) {
-            $editable = false;
+        $editable = $date === now('America/Lima')->toDateString();
+        $editBlockReason = $editable ? null : 'Desde el dashboard solo se puede editar la programación del día de hoy.';
+        if ($editable) {
+            try {
+                $service->assertEditable($schedule, $date);
+            } catch (ValidationException $e) {
+                $editable = false;
+                $editBlockReason = collect($e->errors())->flatten()->first() ?? 'La programación no está disponible para cambios.';
+            }
         }
-        $editable = $editable && $date === now('America/Lima')->toDateString();
         $crew = collect(array_merge([$schedule->driver_id], $schedule->helper_ids))->map(fn ($id) => ['employee' => Employee::find($id), 'id' => $id, 'present' => $service->attended((int) $id, $date), 'role' => (int) $id === (int) $schedule->driver_id ? 'driver' : 'helper']);
         $candidates = [];
         if ($editable) {
@@ -66,22 +69,52 @@ class ScheduleDashboardController extends Controller
             }
         }
 
-        return view('admin.programming.dashboard.show', array_merge(app(ScheduleChangeController::class)->catalog(), compact('schedule', 'date', 'crew', 'editable', 'candidates')));
+        $data = array_merge(app(ScheduleChangeController::class)->catalog(), compact('schedule', 'date', 'crew', 'editable', 'editBlockReason', 'candidates'));
+
+        if ($request->ajax()) {
+            return view('admin.programming.dashboard.modal-detail', $data);
+        }
+
+        return view('admin.programming.dashboard.show', $data);
     }
 
     public function update(Request $request, ProgrammingSchedule $schedule, ScheduleChangeService $service)
     {
-        $data = $request->validate([
-            'date' => ['required', 'date_format:Y-m-d'], 'type' => ['required', Rule::in(array_keys(ScheduleChange::TYPES))],
-            'old_id' => ['required', 'integer'], 'new_id' => ['required', 'integer'],
+        $rules = [
+            'date' => ['required', 'date_format:Y-m-d'],
             'reason_id' => ['required', 'integer', Rule::exists('change_reasons', 'id')->whereNull('deleted_at')],
             'detail' => ['nullable', 'string', 'max:1000'],
-        ]);
-        $changed = DB::transaction(function () use ($schedule, $data, $service) {
+        ];
+        if ($request->has('changes')) {
+            $rules += [
+                'changes' => ['required', 'array', 'min:1'],
+                'changes.*.type' => ['required', Rule::in(array_keys(ScheduleChange::TYPES))],
+                'changes.*.old_id' => ['required', 'integer'],
+                'changes.*.new_id' => ['required', 'integer'],
+            ];
+        } else {
+            // Keep the standalone detail page's single-change form compatible.
+            $rules += [
+                'type' => ['required', Rule::in(array_keys(ScheduleChange::TYPES))],
+                'old_id' => ['required', 'integer'], 'new_id' => ['required', 'integer'],
+            ];
+        }
+        $data = $request->validate($rules);
+        $edits = isset($data['changes'])
+            ? array_map(fn ($change) => $change + ['reason_id' => $data['reason_id'], 'detail' => $data['detail'] ?? ''], $data['changes'])
+            : [array_intersect_key($data, array_flip(['type', 'old_id', 'new_id', 'reason_id', 'detail']))];
+        $changed = DB::transaction(function () use ($schedule, $data, $edits, $service) {
             $service->lock();
 
-            return $service->applyDay(ProgrammingSchedule::lockForUpdate()->findOrFail($schedule->id), $data['date'], [$data], 'dashboard');
+            return $service->applyDay(ProgrammingSchedule::lockForUpdate()->findOrFail($schedule->id), $data['date'], $edits, 'dashboard');
         }, 3);
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => 'Los reemplazos se aplicaron y quedaron registrados en el historial.',
+                'redirect' => route('admin.programming.dashboard.index', ['date' => $data['date']]),
+            ]);
+        }
 
         return redirect()->route('admin.programming.dashboard.show', ['schedule' => $changed, 'date' => $data['date']])->with('success', 'Cambio aplicado al día y guardado en el historial.');
     }
