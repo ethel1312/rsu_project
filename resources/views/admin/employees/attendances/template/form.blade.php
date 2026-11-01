@@ -2,6 +2,16 @@
     <input type="hidden" name="attendance_id" value="{{ $attendance->id }}">
 @endif
 <div class="row">
+    <div class="col-md-6 mb-3">
+        <label for="shift_id">Turno *</label>
+        <select name="shift_id" id="shift_id" class="form-select" required>
+            <option value="">Seleccione el turno</option>
+            @foreach($shifts as $shift)
+                <option value="{{ $shift->id }}" @selected(old('shift_id', $attendance->shift_id) == $shift->id)>{{ $shift->name }} ({{ substr($shift->start_time, 0, 5) }}–{{ substr($shift->end_time, 0, 5) }})</option>
+            @endforeach
+        </select>
+        @if($attendance->exists && !$attendance->shift_id)<small class="text-warning">Registro antiguo sin turno: seleccione el turno correspondiente.</small>@endif
+    </div>
     @if ($attendance->exists)
         <input type="hidden" name="employee_id" value="{{ $attendance->employee_id }}">
         <input type="hidden" name="date" value="{{ $attendance->date->format('Y-m-d') }}">
@@ -21,7 +31,7 @@
         <div class="col-md-6 mb-3">
             <label for="attendance_type">Tipo automático</label>
             <input id="attendance_type" class="form-control" readonly value="{{ $attendance->type === 'entry' ? 'Ingreso' : ($attendance->type === 'exit' ? 'Salida' : 'No aplica (ausencia)') }}" aria-describedby="type-help">
-            <small id="type-help" class="text-muted">Las marcaciones del día se alternan: ingreso, salida, ingreso, salida.</small>
+            <small id="type-help" class="text-muted">Las marcaciones de cada día y turno se alternan: ingreso, salida, ingreso, salida.</small>
         </div>
     @else
     <div class="col-12 mb-3">
@@ -36,7 +46,7 @@
     <div class="col-md-6 mb-3">
         <label for="attendance_type">Tipo automático</label>
         <input id="attendance_type" class="form-control" readonly value="Seleccione personal, fecha y hora" aria-describedby="type-help">
-        <small id="type-help" class="text-muted">Las marcaciones del día se alternan: ingreso, salida, ingreso, salida.</small>
+        <small id="type-help" class="text-muted">Las marcaciones de cada día y turno se alternan: ingreso, salida, ingreso, salida.</small>
     </div>
     <div class="col-md-6 mb-3">
         {!! Form::label('status', 'Estado *') !!}

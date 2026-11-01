@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Schema;
 
 class ScheduleAvailabilityService
 {
-    public function check(array $definitions, ?int $excludeScheduleId = null, array $ignoredAbsenceIds = [], ?string $excludeServiceDate = null): array
+    public function check(array $definitions, ?int $excludeScheduleId = null, array $ignoredAbsenceIds = [], ?string $excludeServiceDate = null, array $shiftScopedEmployeeIds = []): array
     {
         $employeeIds = collect($definitions)
             ->flatMap(fn ($item) => array_merge([$item['driver_id']], $item['helper_ids']))
@@ -43,7 +43,7 @@ class ScheduleAvailabilityService
         if (Schema::hasTable('attendances')) {
             $absences = DB::table('attendances')->whereIn('employee_id', $employeeIds)
                 ->whereNotIn('employee_id', $ignoredAbsenceIds)->whereBetween('date', [$minDate, $maxDate])->where('status', 'absent')
-                ->get(['employee_id', 'date'])->groupBy(fn ($row) => $row->date);
+                ->get(['employee_id', 'date', 'shift_id'])->groupBy(fn ($row) => $row->date);
         }
 
         $existing = ProgrammingSchedule::query()->whereIn('status', ['Programada', 'Reprogramado'])
@@ -105,7 +105,7 @@ class ScheduleAvailabilityService
                 }
 
                 foreach ($absences->get($date, collect()) as $absence) {
-                    if (in_array((int) $absence->employee_id, $crew, true)) {
+                    if ((int) $absence->shift_id === (int) $definition['shift_id'] && in_array((int) $absence->employee_id, $crew, true)) {
                         $employeeId = (int) $absence->employee_id;
                         $employeeName = $employeeNames->get($employeeId)?->full_name ?? 'Un integrante del grupo';
                         $this->addConflict($dateConflicts, $date.': '.$employeeName.' registra una inasistencia.');
@@ -136,6 +136,11 @@ class ScheduleAvailabilityService
                             continue;
                         }
                         $otherSlot = $this->slotFromSchedule($other, $otherDate);
+                        // Dashboard replacements are reserved by service date and shift,
+                        // while vehicle/group conflicts retain their time-based checks.
+                        if ($otherDate !== $date || (int) $other->shift_id !== (int) $definition['shift_id']) {
+                            $otherSlot['crew'] = array_values(array_diff($otherSlot['crew'], $shiftScopedEmployeeIds));
+                        }
                         $otherSlot['day_offset'] = $dayOffset;
                         $timesOverlap = $this->timesOverlap($slot['start'], $slot['end'], $otherSlot['start'], $otherSlot['end'], $dayOffset);
                         if ($timesOverlap) {
@@ -566,7 +571,7 @@ class ScheduleAvailabilityService
 
         if (Schema::hasTable('attendances')) {
             $absenceExists = DB::table('attendances')->where('employee_id', $employeeId)
-                ->whereIn('status', ['absent'])
+                ->whereIn('status', ['absent'])->where('shift_id', $definition['shift_id'])
                 ->whereBetween('date', [$firstDate, $lastDate])
                 ->whereIn('date', $dates)->exists();
             if ($absenceExists) {

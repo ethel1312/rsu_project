@@ -10,7 +10,7 @@ class Attendance extends Model
 {
     public const TIMEZONE = 'America/Lima';
 
-    protected $fillable = ['employee_id', 'date', 'time', 'type', 'status', 'notes'];
+    protected $fillable = ['employee_id', 'shift_id', 'date', 'time', 'type', 'status', 'notes'];
 
     protected $casts = ['date' => 'date'];
 
@@ -18,6 +18,11 @@ class Attendance extends Model
     {
         // Mantener una fecha sin hora tanto en MySQL como en SQLite.
         $this->attributes['date'] = Carbon::parse($value)->format('Y-m-d');
+    }
+
+    public function shift(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Programming\Shift::class);
     }
 
     public function employee(): BelongsTo

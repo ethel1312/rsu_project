@@ -910,7 +910,7 @@ return [
         [
             'text' => 'Gestión de Usuarios',
             'icon' => 'bi bi-person-gear',
-            'url' => '#',
+            'submenu' => [['text' => 'Lista de Usuarios', 'route' => 'admin.users.index', 'icon' => 'bi bi-people']],
         ],
     ],
 

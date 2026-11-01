@@ -10,12 +10,12 @@ class ProgrammingScheduleHistory extends Model
 {
     protected $fillable = [
         'programming_schedule_id', 'schedule_label', 'changed_by', 'action',
-        'before_data', 'after_data', 'notes',
+        'before_data', 'after_data', 'notes', 'service_date', 'source', 'operation_uuid',
     ];
 
     protected function casts(): array
     {
-        return ['before_data' => 'array', 'after_data' => 'array'];
+        return ['before_data' => 'array', 'after_data' => 'array', 'service_date' => 'date'];
     }
 
     public function schedule(): BelongsTo

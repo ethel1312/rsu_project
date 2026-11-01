@@ -34,11 +34,17 @@
         @else
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
-                    <thead><tr><th>Fecha</th><th>Tipo</th><th>Anterior</th><th>Nuevo</th><th>Motivo</th></tr></thead>
+                    <thead><tr><th>Registro</th><th>Día / Origen</th><th>Tipo</th><th>Anterior</th><th>Nuevo</th><th>Motivo</th></tr></thead>
                     <tbody>
                         @foreach ($historyRows as $row)
                             <tr>
                                 <td class="text-nowrap"><strong>{{ $row['date']?->format('d/m/Y') }}</strong><br><small class="text-muted">{{ $row['date']?->format('H:i') }}</small></td>
+                                <td class="text-nowrap">
+                                    {{ ($row['service_date'] ?? null)?->format('d/m/Y') ?? '—' }}<br>
+                                    <span class="badge bg-secondary">{{ ['mass' => 'Masivo', 'individual' => 'Individual', 'dashboard' => 'Dashboard'][$row['source'] ?? ''] ?? 'Anterior' }}</span>
+                                    @if(($row['action'] ?? '') === 'reverted')<span class="badge bg-warning">Reversión</span>@endif
+                                    @if($row['operation_uuid'] ?? null)<small class="d-block text-muted" title="{{ $row['operation_uuid'] }}">Operación {{ substr($row['operation_uuid'], 0, 8) }}</small>@endif
+                                </td>
                                 <td><span class="history-type-badge"><i class="bi bi-arrow-left-right mr-1" aria-hidden="true"></i>{{ $row['type'] }}</span></td>
                                 <td>{{ $row['before'] }}</td>
                                 <td>{{ $row['after'] }}</td>

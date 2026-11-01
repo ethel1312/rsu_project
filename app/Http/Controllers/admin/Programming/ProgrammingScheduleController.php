@@ -144,10 +144,20 @@ class ProgrammingScheduleController extends Controller
 
     public function validateAvailability(Request $request)
     {
+        $request->validate([
+            'schedule_id' => ['nullable', 'integer', 'exists:programming_schedules,id'],
+            'service_date' => ['required_with:schedule_id', 'nullable', 'date_format:Y-m-d'],
+        ]);
         $definitions = $this->definitions($request);
         $excludeScheduleId = $request->filled('schedule_id') ? $request->integer('schedule_id') : null;
         if ($excludeScheduleId) {
-            ProgrammingSchedule::query()->whereIn('status', ['Programada', 'Reprogramado'])->findOrFail($excludeScheduleId);
+            $original = ProgrammingSchedule::query()->findOrFail($excludeScheduleId);
+            app(ScheduleChangeService::class)->assertEditable($original, $request->input('service_date'));
+            if (count($definitions) !== 1 || $definitions[0]['group_id'] !== (int) $original->personnel_group_id
+                || $definitions[0]['start_date'] !== $request->input('service_date')
+                || $definitions[0]['end_date'] !== $request->input('service_date')) {
+                throw ValidationException::withMessages(['service_date' => 'Valide únicamente el día y grupo que está modificando.']);
+            }
         }
         $result = $this->availability->check($definitions, $excludeScheduleId, [], $request->input('service_date'));
         $crewAvailability = [];
@@ -169,6 +179,7 @@ class ProgrammingScheduleController extends Controller
                 'warnings' => $result['warnings'],
                 'crew_availability' => $crewAvailability,
                 'group_results' => $result['group_results'],
+                'suggestions' => $result['suggestions'],
                 'service_days' => $result['service_days'],
                 'available_service_days' => $result['available_service_days'],
                 'skipped_service_days' => $result['skipped_service_days'],
@@ -301,9 +312,16 @@ class ProgrammingScheduleController extends Controller
         return response()->json(['message' => 'Programación eliminada exitosamente.']);
     }
 
-    public function history(ProgrammingSchedule $schedule)
+    public function history(Request $request, ProgrammingSchedule $schedule)
     {
-        $histories = $schedule->histories()->with('actor')->latest()->get();
+        $date = $request->validate(['date' => ['nullable', 'date_format:Y-m-d']])['date'] ?? null;
+        if ($date && ! $schedule->runsOn($date)) {
+            $schedule = ProgrammingSchedule::where('parent_schedule_id', $schedule->id)->get()
+                ->first(fn ($day) => $day->runsOn($date)) ?? $schedule;
+        }
+        $histories = $schedule->histories()->with('actor')
+            ->when($date, fn ($q) => $q->where(fn ($q) => $q->whereDate('service_date', $date)->orWhereNull('service_date')))
+            ->latest('id')->get();
         $labelPattern = addcslashes($schedule->group_name.' · ', '\\%_').'%';
         $splitHistories = ProgrammingScheduleHistory::query()
             ->where('action', 'split')
@@ -311,7 +329,7 @@ class ProgrammingScheduleController extends Controller
             ->latest()->get();
         $historyRows = $this->scheduleHistoryRows($histories, $splitHistories, $schedule);
 
-        return view('admin.programming.schedules.history-detail', compact('schedule', 'historyRows'));
+        return view('admin.programming.schedules.history-detail', compact('schedule', 'historyRows', 'date'));
     }
 
     public function allHistory()
@@ -389,6 +407,10 @@ class ProgrammingScheduleController extends Controller
                 }
                 $reason = collect($reasonParts)->first(fn ($part) => str_starts_with($part, $reasonPrefix));
                 $rows->push([
+                    'service_date' => $history->service_date,
+                    'source' => $history->source,
+                    'operation_uuid' => $history->operation_uuid,
+                    'action' => $history->action,
                     'date' => $history->created_at?->timezone('America/Lima'),
                     'type' => $type,
                     'before' => $before[$key],
@@ -406,6 +428,10 @@ class ProgrammingScheduleController extends Controller
 
                 for ($index = 0; $index < max(count($removedHelpers), count($addedHelpers)); $index++) {
                     $rows->push([
+                        'service_date' => $history->service_date,
+                        'source' => $history->source,
+                        'operation_uuid' => $history->operation_uuid,
+                        'action' => $history->action,
                         'date' => $history->created_at?->timezone('America/Lima'),
                         'type' => 'Cambio de ayudante',
                         'before' => $removedHelpers[$index] ?? '—',

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\admin\Employees;
 use App\Http\Controllers\Controller;
 use App\Models\Employees\Attendance;
 use App\Models\Employees\Employee;
+use App\Models\Programming\Shift;
 use App\Services\Employees\AttendanceService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -33,7 +34,7 @@ class AttendanceController extends Controller
         $endDate = $data['end_date'] ?? $today;
 
         if ($request->ajax()) {
-            $records = Attendance::query()->join('employees', 'employees.id', '=', 'attendances.employee_id')
+            $records = Attendance::query()->with('shift')->join('employees', 'employees.id', '=', 'attendances.employee_id')
                 ->whereBetween('attendances.date', [$startDate, $endDate])
                 ->select('attendances.*', 'employees.dni', 'employees.first_name', 'employees.last_name');
 
@@ -48,6 +49,7 @@ class AttendanceController extends Controller
             }
 
             return DataTables::of($records)
+                ->addColumn('shift_name', fn ($record) => $record->shift?->name ?? 'Sin turno')
                 ->editColumn('date', fn ($record) => $record->date->format('d/m/Y'))
                 ->editColumn('type', fn ($record) => match ($record->type) {
                     'entry' => 'Ingreso', 'exit' => 'Salida', default => 'No aplica',
@@ -73,7 +75,7 @@ class AttendanceController extends Controller
         ]);
 
         return view('admin.employees.attendances.create', [
-            'attendance' => $attendance, 'employees' => [],
+            'attendance' => $attendance, 'employees' => [], 'shifts' => Shift::orderBy('start_time')->get(),
         ]);
     }
 
@@ -91,6 +93,7 @@ class AttendanceController extends Controller
         return view('admin.employees.attendances.edit', [
             'attendance' => $attendance,
             'employee' => $employee,
+            'shifts' => Shift::orderBy('start_time')->get(),
             'employees' => $employee ? [$employee->id => $this->employeeLabel($employee)] : [],
         ]);
     }
@@ -98,6 +101,7 @@ class AttendanceController extends Controller
     public function update(Request $request, Attendance $attendance)
     {
         $data = $request->validate([
+            'shift_id' => 'required|integer|exists:shifts,id',
             'time' => ['required', 'regex:/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/'],
             'notes' => 'nullable|string|max:1000',
         ], [
@@ -127,7 +131,7 @@ class AttendanceController extends Controller
         $data = $this->validated($request);
         $request->validate(['attendance_id' => 'nullable|integer|exists:attendances,id']);
         $type = $data['status'] === 'present'
-            ? $this->attendances->nextType((int) $data['employee_id'], $data['date'], $data['time'], $request->integer('attendance_id') ?: null)
+            ? $this->attendances->nextType((int) $data['employee_id'], $data['date'], $data['time'], (int) $data['shift_id'], $request->integer('attendance_id') ?: null)
             : null;
 
         return response()->json(['type' => match ($type) {
@@ -177,6 +181,7 @@ class AttendanceController extends Controller
     {
         $data = $request->validate([
             'employee_id' => 'required|integer|exists:employees,id',
+            'shift_id' => 'required|integer|exists:shifts,id',
             'date' => 'required|date_format:Y-m-d',
             'time' => ['required', 'regex:/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/'],
             'status' => ['required', Rule::in(['present', 'absent'])],

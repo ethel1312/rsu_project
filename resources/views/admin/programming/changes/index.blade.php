@@ -300,6 +300,10 @@ $(function () {
             .always(() => button.prop('disabled', false));
     });
 
+    @if(request()->boolean('new_mass') && auth()->user()->can('changes.create'))
+        $('#btnNuevoCambio').trigger('click');
+    @endif
+
     $(document).on('click', '.btnVerDetalleCambio', function () {
         const button = $(this);
         const url = @json(route('admin.programming.changes.show', ':id')).replace(':id', button.data('id'));

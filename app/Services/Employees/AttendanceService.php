@@ -30,8 +30,9 @@ class AttendanceService
                     'employee_id' => $current->employee_id,
                     'date' => $current->date->format('Y-m-d'),
                     'status' => $current->status,
+                    'shift_id' => $current->shift_id,
                 ], $data);
-                $previous = [$attendance->employee_id, $attendance->date->format('Y-m-d')];
+                $previous = [$attendance->employee_id, $attendance->date->format('Y-m-d'), $attendance->shift_id];
             }
 
             $duplicate = Attendance::where('employee_id', $data['employee_id'])
@@ -50,10 +51,10 @@ class AttendanceService
             $attendance->type = null;
             $attendance->save();
 
-            if ($previous && $previous !== [(int) $data['employee_id'], $data['date']]) {
+            if ($previous && $previous !== [(int) $data['employee_id'], $data['date'], (int) $data['shift_id']]) {
                 $this->resequence(...$previous);
             }
-            $this->resequence((int) $data['employee_id'], $data['date']);
+            $this->resequence((int) $data['employee_id'], $data['date'], (int) $data['shift_id']);
 
             return $attendance->refresh();
         }, 3);
@@ -72,22 +73,22 @@ class AttendanceService
             $employeeId = $current->employee_id;
             $date = $current->date->format('Y-m-d');
             $current->delete();
-            $this->resequence($employeeId, $date);
+            $this->resequence($employeeId, $date, $current->shift_id);
         }, 3);
     }
 
-    public function nextType(int $employeeId, string $date, string $time, ?int $exceptId = null): string
+    public function nextType(int $employeeId, string $date, string $time, int $shiftId, ?int $exceptId = null): string
     {
-        $count = Attendance::where('employee_id', $employeeId)->where('date', $date)
+        $count = Attendance::where('employee_id', $employeeId)->where('date', $date)->where('shift_id', $shiftId)
             ->where('status', 'present')->where('time', '<', $time)
             ->when($exceptId, fn ($query) => $query->where('id', '!=', $exceptId))->count();
 
         return $count % 2 === 0 ? 'entry' : 'exit';
     }
 
-    private function resequence(int $employeeId, string $date): void
+    private function resequence(int $employeeId, string $date, ?int $shiftId): void
     {
-        $records = Attendance::where('employee_id', $employeeId)->where('date', $date)
+        $records = Attendance::where('employee_id', $employeeId)->where('date', $date)->where('shift_id', $shiftId)
             ->orderBy('time')->orderBy('id')->lockForUpdate()->get();
         $position = 0;
 

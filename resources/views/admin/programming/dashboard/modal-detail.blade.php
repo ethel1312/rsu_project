@@ -10,7 +10,7 @@
     @endif
 
     @if($editable)
-        <form id="dashboardReplacementForm" method="post" action="{{ route('admin.programming.dashboard.update', $schedule) }}">
+        <form id="dashboardReplacementForm" data-candidates-url="{{ route('admin.programming.dashboard.show', ['schedule' => $schedule, 'date' => $date]) }}" method="post" action="{{ route('admin.programming.dashboard.update', $schedule) }}">
             @csrf
             @method('PUT')
             <input type="hidden" name="date" value="{{ $date }}">
@@ -74,11 +74,11 @@
                     </div>
                     <div class="form-group mb-0 dashboard-edit-row">
                         <label for="dashboardNewPerson{{ $index }}">Nuevo Personal</label>
-                        @if($editable && !$member['present'] && !empty($candidates[$member['id']]))
+                        @if($editable && !$member['present'])
                             <input type="hidden" name="changes[{{ $changeIndex }}][type]" value="{{ $member['role'] }}"><input type="hidden" name="changes[{{ $changeIndex }}][old_id]" value="{{ $member['id'] }}">
                             <div class="input-group"><div class="input-group-prepend"><span class="input-group-text text-primary"><i class="bi bi-person-plus-fill"></i></span></div><select id="dashboardNewPerson{{ $index }}" class="form-control dashboard-change-select dashboard-person-select" name="changes[{{ $changeIndex }}][new_id]" data-old="{{ $member['id'] }}">
-                                <option value="">Seleccione un nuevo personal</option>
-                                @foreach($candidates[$member['id']] as $candidate)<option value="{{ $candidate->id }}">{{ $candidate->full_name }} · DNI {{ $candidate->dni }}</option>@endforeach
+                                <option value="">Seleccione personal con asistencia en este turno</option>
+                                @foreach($candidates[$member['id']] ?? [] as $candidate)<option value="{{ $candidate->id }}">{{ $candidate->full_name }} · DNI {{ $candidate->dni }}</option>@endforeach
                             </select></div>
                         @elseif($member['present'])
                             <div class="input-group"><div class="input-group-prepend"><span class="input-group-text text-success"><i class="bi bi-person-check-fill"></i></span></div><input id="dashboardNewPerson{{ $index }}" class="form-control" value="Personal asistió; no requiere reemplazo" readonly></div>
@@ -109,6 +109,23 @@
         <div class="alert alert-danger dashboard-form-alert d-none mt-3 mb-0" role="alert"></div>
         </form>
     @endif
+    <section class="mt-3">
+        <h6>Historial de cambios del día</h6>
+        @forelse($schedule->changes()->with('actor')->whereDate('service_date', $date)->latest('id')->get() as $change)
+            <div class="border rounded p-2 mb-2">
+                <strong>{{ \App\Models\Programming\ScheduleChange::TYPES[$change->type] }}</strong>
+                · {{ ['mass' => 'Masivo', 'individual' => 'Individual', 'dashboard' => 'Dashboard'][$change->source] ?? $change->source }}
+                · {{ $change->reverted_at ? 'Revertido' : 'Aplicado' }}
+                <div>{{ $change->reason_name }} — {{ $change->detail }}</div>
+                <small class="text-muted">{{ $change->actor?->name }} · {{ $change->created_at?->timezone('America/Lima')->format('d/m/Y H:i') }}</small>
+                @can('changes.view')
+                    <a class="ml-2" href="{{ route('admin.programming.changes.show', $change) }}">Ver detalle</a>
+                @endcan
+            </div>
+        @empty
+            <p class="text-muted">No hay cambios registrados para este día.</p>
+        @endforelse
+    </section>
 </div>
 <div class="modal-footer">
     <button type="button" class="btn btn-secondary dashboard-modal-dismiss">Cancelar</button>

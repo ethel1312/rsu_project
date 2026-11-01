@@ -21,7 +21,11 @@ use App\Http\Controllers\admin\VehicleController;
 use App\Http\Controllers\admin\VehicleTypeController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', [AdminController::class, 'index']);
+Route::get('/', [AdminController::class, 'index'])->name('admin.home');
+
+Route::get('users/{user}/permissions', [\App\Http\Controllers\admin\UserController::class, 'permissions'])->name('admin.users.permissions');
+Route::put('users/{user}/permissions', [\App\Http\Controllers\admin\UserController::class, 'updatePermissions'])->name('admin.users.permissions.update');
+Route::resource('users', \App\Http\Controllers\admin\UserController::class)->except('show')->names('admin.users');
 
 Route::resource('brands', BrandController::class)->names('admin.brands');
 
