@@ -16,6 +16,8 @@ class AttendanceTest extends TestCase
 
     private Employee $employee;
 
+    private \App\Models\Programming\Shift $shift;
+
     protected function migrateFreshUsing(): array
     {
         // Solo las dependencias del módulo. El repositorio contiene además una
@@ -23,9 +25,12 @@ class AttendanceTest extends TestCase
         return ['--path' => [
             'database/migrations/0001_01_01_000000_create_users_table.php',
             'database/migrations/2026_09_19_223236_add_two_factor_columns_to_users_table.php',
+            'database/migrations/2026_11_01_000000_add_user_management_fields.php',
             'database/migrations/2026_10_05_220523_create_employee_types_table.php',
             'database/migrations/2026_10_05_220605_create_employees_table.php',
             'database/migrations/2026_10_06_172605_create_attendances_table.php',
+            'database/migrations/2026_10_20_000000_create_shifts_table.php',
+            'database/migrations/2026_11_01_020000_add_shift_to_attendances.php',
         ]];
     }
 
@@ -33,6 +38,7 @@ class AttendanceTest extends TestCase
     {
         parent::setUp();
         $this->withoutVite();
+        $this->shift = \App\Models\Programming\Shift::create(['name' => 'Mañana', 'start_time' => '06:00', 'end_time' => '14:00']);
         $this->travelTo(now()->setDateTime(2026, 10, 7, 2, 30, 0)); // 6 de octubre, 21:30 en Lima.
         $type = EmployeeType::create(['name' => 'Conductor', 'description' => 'Conductor']);
         $this->employee = Employee::create([
@@ -44,13 +50,13 @@ class AttendanceTest extends TestCase
 
     private function admin(): void
     {
-        $this->actingAs(User::factory()->create());
+        $this->actingAs(User::factory()->administrator()->create());
     }
 
     private function data(string $time = '08:00', array $overrides = []): array
     {
         return array_merge([
-            'employee_id' => $this->employee->id, 'date' => '2026-10-06',
+            'employee_id' => $this->employee->id, 'shift_id' => $this->shift->id, 'date' => '2026-10-06',
             'time' => $time, 'status' => 'present', 'notes' => null,
         ], $overrides);
     }
@@ -87,7 +93,7 @@ class AttendanceTest extends TestCase
             ->assertSee('id="employee_display"', false)
             ->assertSee('name="time"', false)
             ->assertSee('name="notes"', false)
-            ->assertDontSee('<select', false)
+            ->assertSee('name="shift_id"', false)
             ->assertDontSee('type="date"', false);
         $this->getJson(route('admin.attendances.index', ['start_date' => '2026-10-06', 'end_date' => '2026-10-06']), ['X-Requested-With' => 'XMLHttpRequest'])
             ->assertOk()->assertJsonPath('recordsTotal', 1)->assertJsonPath('data.0.id', $today->id);
@@ -175,6 +181,7 @@ class AttendanceTest extends TestCase
 
         $this->putJson(route('admin.attendances.update', $attendance), [
             'employee_id' => $other->id,
+            'shift_id' => $this->shift->id,
             'date' => '2026-10-07',
             'status' => 'absent',
             'time' => '09:30',
@@ -243,12 +250,12 @@ class AttendanceTest extends TestCase
 
     public function test_clock_uses_server_time_and_does_not_log_in_as_admin(): void
     {
-        $data = ['dni' => $this->employee->dni, 'password' => 'secreto123',
+        $data = ['shift_id' => $this->shift->id, 'dni' => $this->employee->dni, 'password' => 'secreto123',
             'date' => '2000-01-01', 'time' => '01:00', 'status' => 'absent', 'type' => 'exit', 'employee_id' => 999];
         $this->post(route('employees.attendances.mark'), $data)->assertRedirect(route('employees.attendances.clock'))
-            ->assertSessionHas('status', 'Ingreso registrado exitosamente el 06/10/2026 a las 21:30:00 (hora de Lima).');
+            ->assertSessionHas('status', 'Ingreso registrado para el turno Mañana el 06/10/2026 a las 21:30:00 (hora de Lima).');
         $this->assertDatabaseHas('attendances', [
-            'employee_id' => $this->employee->id, 'date' => '2026-10-06', 'time' => '21:30:00', 'status' => 'present', 'type' => 'entry',
+            'employee_id' => $this->employee->id, 'shift_id' => $this->shift->id, 'date' => '2026-10-06', 'time' => '21:30:00', 'status' => 'present', 'type' => 'entry',
         ]);
         $this->assertGuest();
         $this->travel(1)->minutes();
@@ -259,19 +266,19 @@ class AttendanceTest extends TestCase
     public function test_clock_accepts_existing_passwords_and_upgrades_them_to_hashes(): void
     {
         $this->employee->update(['password' => 'legacy123']);
-        $this->post(route('employees.attendances.mark'), ['dni' => $this->employee->dni, 'password' => 'legacy123'])
+        $this->post(route('employees.attendances.mark'), ['shift_id' => $this->shift->id, 'dni' => $this->employee->dni, 'password' => 'legacy123'])
             ->assertSessionHasNoErrors()->assertSessionHas('status');
         $this->assertTrue(Hash::check('legacy123', $this->employee->refresh()->password));
     }
 
     public function test_clock_rejects_bad_credentials_inactive_personal_and_same_second_duplicates(): void
     {
-        $this->postJson(route('employees.attendances.mark'), ['dni' => $this->employee->dni, 'password' => 'wrong'])
+        $this->postJson(route('employees.attendances.mark'), ['shift_id' => $this->shift->id, 'dni' => $this->employee->dni, 'password' => 'wrong'])
             ->assertUnprocessable()->assertJsonValidationErrors('dni');
-        $this->postJson(route('employees.attendances.mark'), ['dni' => '99999999', 'password' => 'wrong'])
+        $this->postJson(route('employees.attendances.mark'), ['shift_id' => $this->shift->id, 'dni' => '99999999', 'password' => 'wrong'])
             ->assertUnprocessable()->assertJsonValidationErrors('dni');
         $this->employee->update(['status' => false]);
-        $data = ['dni' => $this->employee->dni, 'password' => 'secreto123'];
+        $data = ['shift_id' => $this->shift->id, 'dni' => $this->employee->dni, 'password' => 'secreto123'];
         $this->postJson(route('employees.attendances.mark'), $data)->assertUnprocessable();
         $this->assertDatabaseCount('attendances', 0);
         $this->employee->update(['status' => true]);
@@ -283,9 +290,9 @@ class AttendanceTest extends TestCase
     public function test_clock_limits_credential_attempts(): void
     {
         for ($i = 0; $i < 5; $i++) {
-            $this->postJson(route('employees.attendances.mark'), ['dni' => $this->employee->dni, 'password' => 'wrong'])->assertUnprocessable();
+            $this->postJson(route('employees.attendances.mark'), ['shift_id' => $this->shift->id, 'dni' => $this->employee->dni, 'password' => 'wrong'])->assertUnprocessable();
         }
-        $this->postJson(route('employees.attendances.mark'), ['dni' => $this->employee->dni, 'password' => 'secreto123'])
+        $this->postJson(route('employees.attendances.mark'), ['shift_id' => $this->shift->id, 'dni' => $this->employee->dni, 'password' => 'secreto123'])
             ->assertUnprocessable()->assertJsonPath('errors.dni.0', 'Demasiados intentos. Intente nuevamente en 60 segundos.');
         $this->assertDatabaseCount('attendances', 0);
     }
@@ -363,4 +370,53 @@ class AttendanceTest extends TestCase
         $this->get(route('admin.attendances.edit', $attendance))->assertOk()->assertSee('01234567')->assertDontSee('10000001');
         $this->get(route('admin.attendances.create'))->assertOk()->assertDontSee('10000001')->assertDontSee('01234567');
     }
+    public function test_shift_is_required_and_sequences_are_independent_per_shift(): void
+    {
+        $this->admin();
+        $other = \App\Models\Programming\Shift::create(['name' => 'Tarde', 'start_time' => '14:00', 'end_time' => '22:00']);
+        $this->postJson(route('admin.attendances.store'), $this->data('08:00', ['shift_id' => null]))->assertUnprocessable()->assertJsonValidationErrors('shift_id');
+        $first = $this->createAttendance('08:00');
+        $second = $this->createAttendance('14:00', ['shift_id' => $other->id]);
+        $this->assertSame('entry', $first->fresh()->type);
+        $this->assertSame('entry', $second->fresh()->type);
+        $this->getJson(route('admin.attendances.preview', $this->data('15:00', ['shift_id' => $other->id])))->assertOk()->assertJsonPath('type', 'Salida');
+        $this->createAttendance('16:00', ['shift_id' => $other->id]);
+        $this->deleteJson(route('admin.attendances.destroy', $first))->assertOk();
+        $this->assertSame('entry', $second->fresh()->type);
+        $this->assertSame('exit', Attendance::latest('id')->first()->type);
+    }
+
+    public function test_shift_correction_resequences_both_shifts_and_preserves_legacy_marks(): void
+    {
+        $this->admin();
+        $other = \App\Models\Programming\Shift::create(['name' => 'Tarde', 'start_time' => '14:00', 'end_time' => '22:00']);
+        $first = $this->createAttendance('08:00');
+        $second = $this->createAttendance('09:00');
+        $this->putJson(route('admin.attendances.update', $first), $this->data('08:00', ['shift_id' => $other->id]))->assertOk();
+        $this->assertSame('entry', $first->fresh()->type);
+        $this->assertSame('entry', $second->fresh()->type);
+        $legacy = Attendance::create($this->data('10:00', ['shift_id' => null, 'type' => 'entry']));
+        $this->get(route('admin.attendances.edit', $legacy))->assertOk()->assertSee('Registro antiguo sin turno');
+        $this->putJson(route('admin.attendances.update', $legacy), $this->data('10:00'))->assertOk();
+        $this->assertEquals($this->shift->id, $legacy->fresh()->shift_id);
+        $this->assertSame('exit', $legacy->fresh()->type);
+    }
+
+    public function test_clock_requires_valid_shift_and_stores_selected_shift(): void
+    {
+        $credentials = ['dni' => $this->employee->dni, 'password' => 'secreto123'];
+        $this->postJson(route('employees.attendances.mark'), $credentials)->assertUnprocessable()->assertJsonValidationErrors('shift_id');
+        $this->postJson(route('employees.attendances.mark'), $credentials + ['shift_id' => 9999])->assertUnprocessable();
+        $this->post(route('employees.attendances.mark'), $credentials + ['shift_id' => $this->shift->id])->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('attendances', ['employee_id' => $this->employee->id, 'shift_id' => $this->shift->id, 'type' => 'entry']);
+    }
+
+    public function test_shift_with_attendance_cannot_be_deleted(): void
+    {
+        $this->admin();
+        $this->createAttendance();
+        $this->deleteJson(route('admin.programming.shifts.destroy', $this->shift))->assertStatus(409);
+        $this->assertDatabaseHas('shifts', ['id' => $this->shift->id]);
+    }
+
 }

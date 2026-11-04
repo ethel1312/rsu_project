@@ -33,6 +33,7 @@ class PersonnelGroupTest extends TestCase
         return ['--path' => [
             'database/migrations/0001_01_01_000000_create_users_table.php',
             'database/migrations/2026_09_19_223236_add_two_factor_columns_to_users_table.php',
+            'database/migrations/2026_11_01_000000_add_user_management_fields.php',
             'database/migrations/2026_09_23_004654_create_brands_table.php',
             'database/migrations/2026_09_30_010448_create_brandmodels_table.php',
             'database/migrations/2026_09_30_020540_create_colors_table.php',
@@ -68,7 +69,7 @@ class PersonnelGroupTest extends TestCase
             'type_id' => VehicleType::create(['name' => 'Compactador'])->id,
             'brand_id' => $brand->id, 'model_id' => $model->id, 'color_id' => Color::create(['name' => 'Blanco', 'code' => '#ffffff'])->id,
         ]);
-        $this->actingAs(User::factory()->create());
+        $this->actingAs(User::factory()->administrator()->create());
     }
 
     private function employee(string $dni, string $name, EmployeeType $type): Employee

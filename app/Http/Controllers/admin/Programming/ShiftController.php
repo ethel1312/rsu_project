@@ -57,6 +57,10 @@ class ShiftController extends Controller
             return response()->json(['message' => 'No se puede eliminar este turno porque está configurado en un grupo de personal. Cambie el turno del grupo primero.'], 409);
         }
 
+        if (Schema::hasColumn('attendances', 'shift_id') && DB::table('attendances')->where('shift_id', $shift->id)->exists()) {
+            return response()->json(['message' => 'No se puede eliminar este turno porque tiene asistencias registradas.'], 409);
+        }
+
         $shift->delete();
 
         return response()->json(['message' => 'Turno eliminado correctamente.']);

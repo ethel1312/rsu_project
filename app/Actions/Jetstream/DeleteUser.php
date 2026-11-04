@@ -12,6 +12,11 @@ class DeleteUser implements DeletesUsers
      */
     public function delete(User $user): void
     {
+        if ($user->is_admin) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'deleteUser' => 'Un administrador principal debe ser eliminado por otro administrador desde Gestión de Usuarios.',
+            ]);
+        }
         $user->deleteProfilePhoto();
         $user->tokens->each->delete();
         $user->delete();

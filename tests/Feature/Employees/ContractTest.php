@@ -21,6 +21,7 @@ class ContractTest extends TestCase
         return ['--path' => [
             'database/migrations/0001_01_01_000000_create_users_table.php',
             'database/migrations/2026_09_19_223236_add_two_factor_columns_to_users_table.php',
+            'database/migrations/2026_11_01_000000_add_user_management_fields.php',
             'database/migrations/2026_10_05_220523_create_employee_types_table.php',
             'database/migrations/2026_10_05_220605_create_employees_table.php',
             'database/migrations/2026_10_06_145635_create_contracts_table.php',
@@ -44,7 +45,7 @@ class ContractTest extends TestCase
             'employee_type_id' => $type->id,
         ]);
 
-        $this->actingAs(User::factory()->create());
+        $this->actingAs(User::factory()->administrator()->create());
     }
 
     private function contractData(array $overrides = []): array

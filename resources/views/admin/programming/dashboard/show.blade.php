@@ -1,7 +1,7 @@
 @extends('admin.programming.operations-layout', ['pageTitle'=>'Detalle de programación #'.$schedule->id])
 @section('operations')
 <div class="operation-banner mb-4"><h2 class="h4">{{ $schedule->zone_name }} · {{ $schedule->group_name }}</h2>{{ \Carbon\Carbon::parse($date)->format('d/m/Y') }} · {{ $schedule->shift_name }} ({{ substr($schedule->shift_start_time,0,5) }}–{{ substr($schedule->shift_end_time,0,5) }}) · {{ $schedule->vehicle_label }}</div>
-@if(!$editable)<div class="alert alert-info">Consulta de la programación. Los cambios desde el dashboard están disponibles solo hoy, antes del inicio del recorrido y del horario del turno.</div>@endif
+@if(!$editable)<div class="alert alert-info">Consulta de la programación. Los cambios desde el dashboard están disponibles solo hoy, antes del inicio del recorrido.</div>@endif
 <div class="card operation-card mb-4"><div class="card-header bg-primary text-white">Asistencia del equipo</div><div class="table-responsive"><table class="table mb-0"><thead><tr><th>Personal</th><th>Rol</th><th>Asistencia</th><th>Reemplazos disponibles</th></tr></thead><tbody>
 @foreach($crew as $member)<tr><td>{{ $member['employee']?->full_name ?? 'Personal #'.$member['id'] }}</td><td>{{ $member['role'] === 'driver' ? 'Conductor' : 'Ayudante' }}</td><td><span class="badge {{ $member['present'] ? 'bg-success' : 'bg-danger' }}">{{ $member['present'] ? 'Asistió' : 'Faltante' }}</span></td><td>
 @if($editable && !$member['present'])

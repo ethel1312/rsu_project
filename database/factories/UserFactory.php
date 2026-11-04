@@ -28,6 +28,7 @@ class UserFactory extends Factory
     {
         return [
             'name' => fake()->name(),
+            'is_active' => true,
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
@@ -42,6 +43,11 @@ class UserFactory extends Factory
     /**
      * Indicate that the model's email address should be unverified.
      */
+    public function administrator(): static
+    {
+        return $this->state(fn () => ['is_admin' => true, 'is_active' => true, 'user_type' => 'Administrador']);
+    }
+
     public function unverified(): static
     {
         return $this->state(fn (array $attributes) => [

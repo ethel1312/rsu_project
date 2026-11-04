@@ -34,7 +34,7 @@ class ScheduleOperationsTest extends TestCase
     {
         parent::setUp();
         Carbon::setTestNow(Carbon::parse('2027-03-01 05:00:00', 'America/Lima'));
-        $this->actingAs(User::factory()->create());
+        $this->actingAs(User::factory()->administrator()->create());
         $this->seed(ProgrammingDemoSeeder::class);
         $group = PersonnelGroup::with(['shift', 'zone', 'vehicle', 'driver', 'helpers'])->where('name', 'Grupo Moshoqueque (demo)')->firstOrFail();
         $this->schedule = ProgrammingSchedule::create([
@@ -57,7 +57,7 @@ class ScheduleOperationsTest extends TestCase
 
     private function present(int $id): void
     {
-        Attendance::create(['employee_id' => $id, 'date' => '2027-03-01', 'time' => '04:30:00', 'type' => 'entry', 'status' => 'present']);
+        Attendance::create(['employee_id' => $id, 'shift_id' => $this->schedule->shift_id, 'date' => '2027-03-01', 'time' => '04:30:00', 'type' => 'entry', 'status' => 'present']);
     }
 
     private function edit(array $overrides = []): array
@@ -90,13 +90,13 @@ class ScheduleOperationsTest extends TestCase
 
     public function test_reason_crud_validates_and_preserves_previous_reason_snapshots(): void
     {
-        $this->post(route('admin.programming.reasons.store'), ['name' => '', 'description' => ''])->assertSessionHasErrors(['name', 'description']);
-        $this->post(route('admin.programming.reasons.store'), ['name' => 'Mantenimiento', 'description' => 'Revisión del vehículo'])->assertRedirect();
-        $this->put(route('admin.programming.reasons.update', $this->reason), ['name' => 'Emergencia', 'description' => 'Incidencia imprevista'])->assertRedirect();
+        $this->post(route('admin.programming.reasons.store'), ['name' => '', 'description' => ''])->assertSessionHasErrors(['name']);
+        $this->post(route('admin.programming.reasons.store'), ['name' => 'Mantenimiento', 'description' => 'Revisión del vehículo'])->assertOk();
+        $this->put(route('admin.programming.reasons.update', $this->reason), ['name' => 'Emergencia', 'description' => 'Incidencia imprevista'])->assertOk();
         $this->present($this->replacement->id);
         $this->put(route('admin.programming.dashboard.update', $this->schedule), $this->edit())->assertRedirect();
         $change = ScheduleChange::firstOrFail();
-        $this->delete(route('admin.programming.reasons.destroy', $this->reason))->assertRedirect();
+        $this->delete(route('admin.programming.reasons.destroy', $this->reason))->assertOk();
         $this->assertSoftDeleted('change_reasons', ['id' => $this->reason->id]);
         $this->assertSame('Emergencia', $change->fresh()->reason_name);
         $this->postJson(route('admin.programming.changes.preview'), $this->mass())->assertUnprocessable();
@@ -142,14 +142,15 @@ class ScheduleOperationsTest extends TestCase
         $this->get(route('admin.programming.changes.show', $change))->assertOk()->assertSee($this->replacement->full_name);
     }
 
-    public function test_started_or_past_start_routes_cannot_be_changed(): void
+    public function test_only_actually_started_routes_are_blocked_on_current_day(): void
     {
         $this->present($this->replacement->id);
         $this->schedule->runs()->create(['service_date' => '2027-03-01', 'started_at' => now()]);
         $this->putJson(route('admin.programming.dashboard.update', $this->schedule), $this->edit())->assertUnprocessable();
         $this->schedule->runs()->delete();
         Carbon::setTestNow(Carbon::parse('2027-03-01 06:00', 'America/Lima'));
-        $this->putJson(route('admin.programming.dashboard.update', $this->schedule), $this->edit())->assertUnprocessable();
+        $this->put(route('admin.programming.dashboard.update', $this->schedule), $this->edit())->assertRedirect();
+        $this->assertDatabaseCount('schedule_changes', 1);
     }
 
     public function test_mass_preview_has_no_side_effects_and_commit_records_every_day(): void
@@ -164,7 +165,8 @@ class ScheduleOperationsTest extends TestCase
         $this->assertSame(1, $changes->pluck('operation_uuid')->unique()->count());
         foreach ($changes as $change) {
             $this->assertSame('mass', $change->source);
-            $this->assertDatabaseHas('programming_schedule_histories', ['programming_schedule_id' => $change->programming_schedule_id, 'action' => 'updated']);
+            $this->assertDatabaseHas('programming_schedule_histories', ['programming_schedule_id' => $change->programming_schedule_id, 'action' => 'updated', 'source' => 'mass', 'operation_uuid' => $change->operation_uuid]);
+            $this->get(route('admin.programming.schedules.history', ['schedule' => $change->schedule, 'date' => $change->service_date->toDateString()]))->assertOk()->assertSee('Masivo');
         }
         $this->assertEquals($this->edit()['old_id'], $this->schedule->fresh()->driver_id);
         $this->assertFalse($this->schedule->fresh()->runsOn('2027-03-02'));
@@ -201,6 +203,7 @@ class ScheduleOperationsTest extends TestCase
         $this->delete(route('admin.programming.changes.destroy', $change))->assertRedirect();
         $this->assertEquals($this->schedule->driver_id, $change->schedule->fresh()->driver_id);
         $this->assertNotNull($change->fresh()->reverted_at);
+        $this->assertSame('Programada', $change->schedule->fresh()->status);
         $this->assertDatabaseHas('programming_schedule_histories', ['programming_schedule_id' => $change->programming_schedule_id, 'action' => 'reverted']);
         $this->deleteJson(route('admin.programming.changes.destroy', $change))->assertUnprocessable();
     }
@@ -320,4 +323,234 @@ class ScheduleOperationsTest extends TestCase
         $this->patchJson(route('admin.programming.schedules.finish',$this->schedule),['date' => '2027-03-01', 'route_points' => '[[91,0],[0,181]]'])->assertUnprocessable();
         $this->assertNull(ScheduleRun::first()->finished_at);
     }
+
+    public function test_individual_and_mass_report_identical_vacations_conflicts_and_partial_days(): void
+    {
+        $group = PersonnelGroup::findOrFail($this->schedule->personnel_group_id);
+        $group->update(['days_of_week' => [1, 2, 3, 4, 5, 6, 7]]);
+        $crew = ['driver_id' => $this->schedule->driver_id, 'helper_ids' => $this->schedule->helper_ids];
+        $common = ['start_date' => '2027-03-08', 'end_date' => '2027-03-10'];
+        $individual = $common + $crew + ['mode' => 'individual', 'group_id' => $group->id, 'days_of_week' => [1, 2, 3, 4, 5, 6, 7]];
+        $mass = $common + ['mode' => 'mass', 'group_ids' => [$group->id], 'groups' => [$group->id => $crew]];
+        $vacation = \App\Models\Employees\Vacation::create([
+            'employee_id' => $this->schedule->driver_id, 'start_date' => '2027-03-08',
+            'end_date' => '2027-03-09', 'days_requested' => 2, 'status' => 'Pendiente',
+        ]);
+        foreach (['Pendiente', 'Aprobada'] as $status) {
+            $vacation->update(['status' => $status]);
+            $one = $this->postJson(route('admin.programming.schedules.availability'), $individual)->assertOk();
+            $many = $this->postJson(route('admin.programming.schedules.availability'), $mass)->assertOk();
+            foreach (['available_service_days', 'skipped_service_days', 'warnings', 'crew_availability', 'group_results', 'suggestions'] as $key) {
+                $this->assertEquals($one->json($key), $many->json($key), $status.' '.$key);
+            }
+            $one->assertJsonPath('available_service_days', $status === 'Pendiente' ? 3 : 1);
+            if ($status === 'Pendiente') $this->assertNotEmpty($one->json('warnings'));
+        }
+        $other = $this->schedule->replicate();
+        $other->start_date = '2027-03-10';
+        $other->end_date = '2027-03-10';
+        $other->save();
+        foreach ([$individual, $mass] as $data) {
+            $this->postJson(route('admin.programming.schedules.availability'), $data)
+                ->assertStatus(409)->assertJsonPath('available_service_days', 0);
+        }
+    }
+
+    public function test_dashboard_rejects_replacing_present_staff_even_if_added_back_in_same_request(): void
+    {
+        $this->present($this->schedule->driver_id);
+        $this->present($this->replacement->id);
+        $this->putJson(route('admin.programming.dashboard.update', $this->schedule), [
+            'date' => '2027-03-01', 'reason_id' => $this->reason->id,
+            'changes' => [
+                ['type' => 'driver', 'old_id' => $this->schedule->driver_id, 'new_id' => $this->replacement->id],
+                ['type' => 'driver', 'old_id' => $this->replacement->id, 'new_id' => $this->schedule->driver_id],
+            ],
+        ])->assertUnprocessable();
+        $this->assertDatabaseCount('schedule_changes', 0);
+    }
+
+    public function test_dashboard_shift_change_checks_crew_already_assigned_to_finished_route(): void
+    {
+        $shift = Shift::where('name', 'Tarde (demo)')->firstOrFail();
+        $other = $this->schedule->replicate();
+        $other->shift_id = $shift->id;
+        $other->status = 'Finalizada';
+        $other->save();
+        $this->putJson(route('admin.programming.dashboard.update', $this->schedule),
+            $this->edit(['type' => 'shift', 'old_id' => $this->schedule->shift_id, 'new_id' => $shift->id]))
+            ->assertUnprocessable()->assertJsonValidationErrors('change');
+        $this->assertDatabaseCount('schedule_changes', 0);
+    }
+
+    public function test_reverting_different_fields_out_of_order_restores_initial_status(): void
+    {
+        $service = app(ScheduleChangeService::class);
+        $vehicle = Vehicle::where('code', 'DEMO-002')->firstOrFail();
+        $day = DB::transaction(fn () => $service->applyDay($this->schedule, '2027-03-02', [
+            $this->edit(),
+            $this->edit(['type' => 'vehicle', 'old_id' => $this->schedule->vehicle_id, 'new_id' => $vehicle->id]),
+        ], 'individual'));
+        $changes = $day->changes()->orderBy('id')->get();
+        $service->revert($changes[0]);
+        $this->assertSame('Reprogramado', $day->fresh()->status);
+        $this->assertEquals($vehicle->id, $day->fresh()->vehicle_id);
+        $service->revert($changes[1]);
+        $this->assertSame('Programada', $day->fresh()->status);
+        $this->assertEquals($this->schedule->vehicle_id, $day->fresh()->vehicle_id);
+        $this->assertEquals($this->schedule->driver_id, $day->fresh()->driver_id);
+    }
+
+    public function test_day_history_resolves_original_schedule_after_mass_change(): void
+    {
+        $data = $this->mass();
+        $preview = $this->postJson(route('admin.programming.changes.preview'), $data)->assertOk();
+        $this->postJson(route('admin.programming.changes.store'), $data + ['confirmed' => 1, 'preview_token' => $preview->json('token')])->assertOk();
+        $this->get(route('admin.programming.schedules.history', ['schedule' => $this->schedule, 'date' => '2027-03-02']))
+            ->assertOk()->assertSee('Masivo')->assertSee('02/03/2027')->assertSee($this->replacement->full_name);
+    }
+
+    public function test_dashboard_modal_displays_daily_change_history(): void
+    {
+        $this->present($this->replacement->id);
+        $this->put(route('admin.programming.dashboard.update', $this->schedule), $this->edit())->assertRedirect();
+        $day = ScheduleChange::firstOrFail()->schedule;
+        $this->get(route('admin.programming.dashboard.show', ['schedule' => $day, 'date' => '2027-03-01']), ['X-Requested-With' => 'XMLHttpRequest'])
+            ->assertOk()->assertSee('Historial de cambios del día')->assertSee('Imprevistos')->assertSee('Dashboard')->assertSee('Ver detalle');
+        $this->assertDatabaseHas('programming_schedule_histories', ['programming_schedule_id' => $day->id, 'source' => 'dashboard']);
+    }
+
+    public function test_schedule_view_permission_can_access_recorded_route(): void
+    {
+        $this->actingAs(User::factory()->create(['is_admin' => false, 'permissions' => ['schedules.view']]));
+        $this->get(route('admin.programming.schedules.route', ['schedule' => $this->schedule, 'date' => '2027-03-01']))->assertOk();
+        $this->postJson(route('admin.programming.schedules.start', $this->schedule), ['date' => '2027-03-01'])->assertForbidden();
+    }
+
+    public function test_past_day_cannot_be_modified_and_completed_route_has_view_button(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2027-03-02 05:00', 'America/Lima'));
+        $payload = ['type' => 'driver', 'fromValue' => $this->schedule->driver_id, 'newValue' => $this->replacement->id, 'reasonId' => $this->reason->id];
+        $this->putJson(route('admin.programming.schedules.update', $this->schedule), ['service_date' => '2027-03-01', 'changes_payload' => json_encode([$payload])])->assertUnprocessable();
+        $run = $this->schedule->runs()->create(['service_date' => '2027-03-01', 'started_at' => now()->subDay(), 'finished_at' => now()->subDay()->addHour()]);
+        $this->assertStringContainsString('Ver recorrido', view('admin.programming.schedules.template.actions', [
+            'schedule' => $this->schedule, 'run' => $run, 'serviceDate' => '2027-03-01',
+        ])->render());
+    }
+
+    public function test_dashboard_filters_keep_totals_and_show_missing_people(): void
+    {
+        $other = $this->schedule->replicate();
+        $other->group_name = 'Grupo sin asistencia';
+        $other->shift_id = Shift::where('name', 'Tarde (demo)')->firstOrFail()->id;
+        $other->shift_name = 'Tarde (demo)';
+        $other->save();
+        foreach (array_merge([$this->schedule->driver_id], $this->schedule->helper_ids) as $id) $this->present($id);
+        foreach (['all' => 2, 'complete' => 1, 'incomplete' => 1] as $filter => $count) {
+            $response = $this->get(route('admin.programming.dashboard.index', ['date' => '2027-03-01', 'filter' => $filter]))->assertOk();
+            $response->assertViewHas('cards', fn ($cards) => $cards->count() === $count);
+            $response->assertViewHas('total', 2)->assertViewHas('complete', 1);
+            if ($filter === 'complete') $response->assertDontSee('Grupo sin asistencia');
+        }
+        $this->get(route('admin.programming.dashboard.index', ['filter' => 'missing']))
+            ->assertOk()->assertSee('Personal sin asistencia en el día y turno seleccionados')->assertSee($this->schedule->driver_name)
+            ->assertDontSee('dashboard-detail-button" type=', false);
+        $this->get(route('admin.programming.dashboard.index', ['filter' => 'complete', 'shift_id' => $other->shift_id]))
+            ->assertOk()->assertViewHas('cards', fn ($cards) => $cards->isEmpty())->assertViewHas('total', 1);
+    }
+
+    public function test_wrong_shift_or_legacy_attendance_does_not_count_for_crew_or_replacements(): void
+    {
+        $otherShift = Shift::where('name', 'Tarde (demo)')->firstOrFail();
+        foreach (array_merge([$this->schedule->driver_id, $this->replacement->id], $this->schedule->helper_ids) as $id) {
+            Attendance::create(['employee_id' => $id, 'shift_id' => $otherShift->id, 'date' => '2027-03-01', 'time' => '04:00', 'status' => 'present', 'type' => 'entry']);
+        }
+        $this->get(route('admin.programming.dashboard.index'))->assertOk()->assertViewHas('complete', 0);
+        $this->putJson(route('admin.programming.dashboard.update', $this->schedule), $this->edit())->assertUnprocessable();
+        $this->postJson(route('admin.programming.schedules.start', $this->schedule), ['date' => '2027-03-01'])->assertUnprocessable();
+        Attendance::query()->update(['shift_id' => null]);
+        $this->get(route('admin.programming.dashboard.index'))->assertOk()->assertViewHas('complete', 0);
+        $this->putJson(route('admin.programming.dashboard.update', $this->schedule), $this->edit())->assertUnprocessable();
+        $this->present($this->replacement->id);
+        $this->putJson(route('admin.programming.dashboard.update', $this->schedule), $this->edit())->assertOk();
+    }
+
+    public function test_combined_shift_and_worker_change_uses_destination_shift_regardless_of_edit_order(): void
+    {
+        $shift = Shift::where('name', 'Tarde (demo)')->firstOrFail();
+        $this->present($this->replacement->id);
+        $payload = ['date' => '2027-03-01', 'reason_id' => $this->reason->id, 'changes' => [
+            ['type' => 'driver', 'old_id' => $this->schedule->driver_id, 'new_id' => $this->replacement->id],
+            ['type' => 'shift', 'old_id' => $this->schedule->shift_id, 'new_id' => $shift->id],
+        ]];
+        $url = route('admin.programming.dashboard.update', $this->schedule);
+        $this->putJson($url, $payload)->assertUnprocessable();
+        $candidateUrl = route('admin.programming.dashboard.show', ['schedule' => $this->schedule, 'date' => '2027-03-01', 'candidate_shift_id' => $shift->id]);
+        $this->getJson($candidateUrl)->assertOk()->assertJsonMissing(['id' => $this->replacement->id]);
+        Attendance::create(['employee_id' => $this->replacement->id, 'shift_id' => $shift->id, 'date' => '2027-03-01', 'time' => '04:00', 'type' => 'entry', 'status' => 'present']);
+        $this->getJson($candidateUrl)->assertOk()->assertJsonFragment(['id' => $this->replacement->id]);
+        $this->putJson($url, $payload)->assertOk();
+        $day = ScheduleChange::firstOrFail()->schedule;
+        $this->assertEquals($shift->id, $day->shift_id);
+        $this->assertEquals($this->replacement->id, $day->driver_id);
+    }
+
+    public function test_absence_in_another_shift_does_not_block_programming(): void
+    {
+        $shift = Shift::where('name', 'Tarde (demo)')->firstOrFail();
+        Attendance::create(['employee_id' => $this->schedule->driver_id, 'shift_id' => $shift->id, 'date' => '2027-03-08', 'time' => '04:00', 'status' => 'absent']);
+        $data = ['mode' => 'individual', 'group_id' => $this->schedule->personnel_group_id, 'driver_id' => $this->schedule->driver_id, 'helper_ids' => $this->schedule->helper_ids, 'days_of_week' => [1], 'start_date' => '2027-03-08', 'end_date' => '2027-03-08'];
+        $this->postJson(route('admin.programming.schedules.availability'), $data)->assertOk();
+        Attendance::query()->update(['shift_id' => $this->schedule->shift_id]);
+        $this->postJson(route('admin.programming.schedules.availability'), $data)->assertStatus(409);
+    }
+
+    public function test_dashboard_replacement_can_work_another_shift_even_when_hours_overlap(): void
+    {
+        $this->present($this->replacement->id);
+        $shift = Shift::create(['name' => 'Otro turno', 'start_time' => $this->schedule->shift_start_time, 'end_time' => $this->schedule->shift_end_time]);
+        $other = $this->schedule->replicate();
+        $other->shift_id = $shift->id;
+        $other->personnel_group_id = PersonnelGroup::where('id', '!=', $this->schedule->personnel_group_id)->firstOrFail()->id;
+        $other->vehicle_id = Vehicle::where('id', '!=', $this->schedule->vehicle_id)->firstOrFail()->id;
+        $other->driver_id = $this->replacement->id;
+        $other->helper_ids = [];
+        $other->save();
+
+        $url = route('admin.programming.dashboard.show', ['schedule' => $this->schedule, 'date' => '2027-03-01']);
+        $this->getJson($url)->assertOk()->assertJsonFragment(['id' => $this->replacement->id]);
+        $this->putJson(route('admin.programming.dashboard.update', $this->schedule), $this->edit())->assertOk();
+        $this->assertEquals($this->replacement->id, ScheduleChange::firstOrFail()->schedule->driver_id);
+        $this->assertEquals($this->replacement->id, $other->fresh()->driver_id);
+    }
+
+    public function test_dashboard_replacement_is_blocked_in_same_shift_even_with_different_saved_hours(): void
+    {
+        $this->present($this->replacement->id);
+        $other = $this->schedule->replicate();
+        $other->driver_id = $this->replacement->id;
+        $other->shift_start_time = '18:00';
+        $other->shift_end_time = '20:00';
+        $other->save();
+        $this->getJson(route('admin.programming.dashboard.show', ['schedule' => $this->schedule, 'date' => '2027-03-01']))
+            ->assertOk()->assertJsonMissing(['id' => $this->replacement->id]);
+        $this->putJson(route('admin.programming.dashboard.update', $this->schedule), $this->edit())->assertUnprocessable();
+        $this->assertDatabaseCount('schedule_changes', 0);
+    }
+
+    public function test_existing_holiday_schedule_lists_and_accepts_attended_replacement(): void
+    {
+        Holiday::create(['date' => '2027-03-01', 'description' => 'Feriado ya programado', 'status' => true]);
+        $this->present($this->replacement->id);
+        $this->getJson(route('admin.programming.dashboard.show', ['schedule' => $this->schedule, 'date' => '2027-03-01']))
+            ->assertOk()->assertJsonFragment(['id' => $this->replacement->id]);
+        $this->get(route('admin.programming.dashboard.show', ['schedule' => $this->schedule, 'date' => '2027-03-01']), ['X-Requested-With' => 'XMLHttpRequest'])
+            ->assertOk()->assertSee($this->replacement->full_name);
+        $this->putJson(route('admin.programming.dashboard.update', $this->schedule), $this->edit())->assertOk();
+        $change = ScheduleChange::firstOrFail();
+        $this->assertEquals($this->replacement->id, $change->schedule->driver_id);
+        $this->delete(route('admin.programming.changes.destroy', $change))->assertRedirect();
+        $this->assertEquals($this->schedule->driver_id, $change->schedule->fresh()->driver_id);
+    }
+
 }

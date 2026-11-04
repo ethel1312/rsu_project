@@ -41,14 +41,14 @@ class ScheduleChangeService
         if ($schedule->runs()->whereDate('service_date', $date)->whereNotNull('started_at')->exists()) {
             $this->fail('El recorrido ya se inició y no admite cambios.');
         }
-        if (Carbon::parse($date.' '.$schedule->shift_start_time, 'America/Lima')->lte(now('America/Lima'))) {
-            $this->fail('El turno '.$schedule->shift_name.' ya comenzó a las '.substr($schedule->shift_start_time, 0, 5).'; no se puede modificar después de su inicio.');
+        if ($date < now('America/Lima')->toDateString()) {
+            $this->fail('No se pueden modificar programaciones de días anteriores.');
         }
     }
 
-    public function attended(int $employeeId, string $date): bool
+    public function attended(int $employeeId, string $date, int $shiftId): bool
     {
-        return Attendance::where('employee_id', $employeeId)->whereDate('date', $date)
+        return Attendance::where('employee_id', $employeeId)->whereDate('date', $date)->where('shift_id', $shiftId)
             ->where('status', 'present')->where('type', 'entry')
             ->when($date === now('America/Lima')->toDateString(), fn ($q) => $q->where('time', '<=', now('America/Lima')->format('H:i:s')))->exists();
     }
@@ -116,9 +116,6 @@ class ScheduleChangeService
     public function validateCandidate(ProgrammingSchedule $original, ProgrammingSchedule $candidate, string $date, string $source): void
     {
         $this->assertCrew((int) $candidate->driver_id, array_map('intval', $candidate->helper_ids), Vehicle::findOrFail($candidate->vehicle_id), $candidate->zone_id);
-        if (Carbon::parse($date.' '.$candidate->shift_start_time, 'America/Lima')->lte(now('America/Lima'))) {
-            $this->fail('El nuevo turno debe comenzar en el futuro.');
-        }
         $oldCrew = array_map('intval', array_merge([$original->driver_id], $original->helper_ids));
         $newCrew = array_map('intval', array_merge([$candidate->driver_id], $candidate->helper_ids));
         if ($source === 'dashboard') {
@@ -126,17 +123,18 @@ class ScheduleChangeService
                 $this->fail('El dashboard solo permite cambios para hoy.');
             }
             foreach (array_diff($oldCrew, $newCrew) as $id) {
-                if ($this->attended($id, $date)) {
+                if ($this->attended($id, $date, (int) $original->shift_id)) {
                     $this->fail('No puede cambiar a personal que sí asistió.');
                 }
             }
             foreach (array_diff($newCrew, $oldCrew) as $id) {
-                if (! $this->attended($id, $date)) {
-                    $this->fail('El reemplazo debe haber registrado su asistencia de entrada.');
+                if (! $this->attended($id, $date, (int) $candidate->shift_id)) {
+                    $this->fail('El reemplazo debe tener asistencia de entrada en este día y turno.');
                 }
             }
+            $crewToCheck = (int) $original->shift_id !== (int) $candidate->shift_id ? $newCrew : array_diff($newCrew, $oldCrew);
             foreach (ProgrammingSchedule::where('id', '!=', $original->id)->where('shift_id', $candidate->shift_id)->get() as $other) {
-                if ($other->runsOn($date) && array_intersect(array_diff($newCrew, $oldCrew), array_merge([$other->driver_id], $other->helper_ids))) {
+                if ($other->runsOn($date) && array_intersect($crewToCheck, array_merge([$other->driver_id], $other->helper_ids))) {
                     $this->fail('El reemplazo ya tiene un recorrido asignado en este día y turno.');
                 }
             }
@@ -146,7 +144,11 @@ class ScheduleChangeService
         if ($source === 'revert') {
             $ignoredAbsences = $newCrew;
         }
-        $result = app(ScheduleAvailabilityService::class)->check([$this->definition($candidate, $date)], $original->id, $ignoredAbsences, $date);
+        // The service date already exists, including dates explicitly scheduled on holidays.
+        // Editing its resources must not reapply the holiday exclusion used for creation.
+        $definition = $this->definition($candidate, $date);
+        $definition['holiday_ids'] = [];
+        $result = app(ScheduleAvailabilityService::class)->check([$definition], $original->id, $ignoredAbsences, $date, $source === 'dashboard' ? array_values($crewToCheck) : []);
         if ($result['conflicts'] !== [] || $result['hard_conflicts'] !== []) {
             $this->fail(implode(' ', array_merge($result['hard_conflicts'], $result['conflicts'])));
         }
@@ -191,22 +193,35 @@ class ScheduleChangeService
         if ($prepared === []) {
             $this->fail('Agregue al menos un cambio.');
         }
+        if ($source === 'dashboard') {
+            foreach ($edits as $edit) {
+                if (! in_array($edit['type'], ['driver', 'helper'], true)) continue;
+                if ($this->attended((int) $edit['old_id'], $date, (int) $schedule->shift_id)) {
+                    $this->fail('No puede cambiar a personal que sí asistió en el turno original.');
+                }
+                if (! $this->attended((int) $edit['new_id'], $date, (int) $candidate->shift_id)) {
+                    $this->fail('El reemplazo debe tener asistencia de entrada en este día y en el turno de destino.');
+                }
+            }
+        }
         $this->validateCandidate($schedule, $candidate, $date, $source);
         $schedule = $this->isolateDay($schedule, $date);
         $operation ??= (string) Str::uuid();
         foreach ($prepared as $item) {
             $beforeSnapshot = $this->snapshot($schedule);
+            $previousStatus = $schedule->status;
             $schedule->fill($item['after']);
             $schedule->status = 'Reprogramado';
             $schedule->save();
             $change = ScheduleChange::create([
                 'operation_uuid' => $operation, 'programming_schedule_id' => $schedule->id, 'service_date' => $date,
                 'type' => $item['type'], 'source' => $source, 'change_reason_id' => $item['reason']->id,
+                'previous_status' => $previousStatus,
                 'reason_name' => $item['reason']->name, 'detail' => $item['edit']['detail'] ?? '',
                 'before_data' => $item['before'], 'after_data' => $item['after'], 'changed_by' => auth()->id(),
             ]);
             $this->history($schedule, 'updated', $beforeSnapshot, $this->snapshot($schedule),
-                'Motivo: '.$change->reason_name.' — '.$change->detail.' ['.$source.' #'.$change->id.'; '.$date.']');
+                'Motivo: '.$change->reason_name.' — '.$change->detail, $date, $source, $operation);
         }
 
         return $schedule;
@@ -233,9 +248,16 @@ class ScheduleChangeService
             $candidate->fill($change->before_data);
             $this->validateCandidate($schedule, $candidate, $date, 'revert');
             $before = $this->snapshot($schedule);
-            $schedule->update($change->before_data);
+            $schedule->fill($change->before_data);
+            $otherActiveChanges = $schedule->changes()->where('id', '!=', $change->id)->whereNull('reverted_at')->exists();
+            if (! $otherActiveChanges) {
+                $initial = $schedule->changes()->oldest('id')->first();
+                $firstHistory = $schedule->histories()->where('action', 'updated')->oldest('id')->first();
+                $schedule->status = $initial?->previous_status ?? ($firstHistory?->before_data['estado'] ?? 'Programada');
+            }
+            $schedule->save();
             $change->update(['reverted_at' => now(), 'reverted_by' => auth()->id()]);
-            $this->history($schedule, 'reverted', $before, $this->snapshot($schedule), 'Reversión del cambio #'.$change->id.'. Motivo original: '.$change->reason_name.'; '.$date);
+            $this->history($schedule, 'reverted', $before, $this->snapshot($schedule), 'Reversión del cambio #'.$change->id.'. Motivo original: '.$change->reason_name, $date, $change->source, $change->operation_uuid);
         }, 3);
     }
 
@@ -247,10 +269,11 @@ class ScheduleChangeService
             'ayudantes' => implode(', ', $schedule->helper_names), 'estado' => $schedule->status];
     }
 
-    public function history(ProgrammingSchedule $schedule, string $action, ?array $before, ?array $after, string $notes): void
+    public function history(ProgrammingSchedule $schedule, string $action, ?array $before, ?array $after, string $notes, ?string $serviceDate = null, ?string $source = null, ?string $operation = null): void
     {
         $schedule->histories()->create(['schedule_label' => $schedule->group_name.' · '.$schedule->start_date->format('d/m/Y'),
-            'changed_by' => auth()->id(), 'action' => $action, 'before_data' => $before, 'after_data' => $after, 'notes' => $notes]);
+            'changed_by' => auth()->id(), 'action' => $action, 'before_data' => $before, 'after_data' => $after, 'notes' => $notes,
+            'service_date' => $serviceDate ?? ($after['fecha'] ?? $before['fecha'] ?? null), 'source' => $source, 'operation_uuid' => $operation]);
     }
 
     private function fail(string $message): never

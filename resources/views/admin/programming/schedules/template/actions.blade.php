@@ -1,16 +1,16 @@
 <div class="d-flex justify-content-center flex-nowrap schedule-actions-row" style="gap:6px">
-    @if ($run?->finished_at)
+    @if ($run?->finished_at || $schedule->status === 'Finalizada')
         <a class="btn btn-sm btn-outline-primary" href="{{ route('admin.programming.schedules.route', ['schedule'=>$schedule,'date'=>$serviceDate]) }}" title="Ver recorrido seguido"><i class="bi bi-map me-1"></i>Ver recorrido</a>
     @elseif (in_array($schedule->status, ['Programada', 'Reprogramado'], true) && $serviceDate === now('America/Lima')->toDateString())
         <a class="btn btn-sm btn-outline-primary" href="{{ route('admin.programming.schedules.route', ['schedule'=>$schedule,'date'=>$serviceDate]) }}" title="{{ $run?->started_at ? 'Finalizar recorrido' : 'Iniciar recorrido' }}"><i class="bi bi-map me-1"></i>{{ $run?->started_at ? 'Finalizar recorrido' : 'Iniciar recorrido' }}</a>
     @endif
     <button type="button" class="btn btn-sm schedule-action schedule-action-history btnScheduleHistory"
-            data-url="{{ route('admin.programming.schedules.history', $schedule) }}"
+            data-url="{{ route('admin.programming.schedules.history', ['schedule' => $schedule, 'date' => $serviceDate]) }}"
             data-title="{{ $schedule->group_name }} · {{ \Carbon\Carbon::parse($serviceDate)->format('d/m/Y') }}"
             title="Ver historial" aria-label="Ver historial">
         <i class="bi bi-clock-history"></i>
     </button>
-    @if (in_array($schedule->status, ['Programada', 'Reprogramado'], true) && !$run?->started_at && \Carbon\Carbon::parse($serviceDate.' '.$schedule->shift_start_time, 'America/Lima')->isFuture())
+    @if (in_array($schedule->status, ['Programada', 'Reprogramado'], true) && !$run?->started_at && $serviceDate >= now('America/Lima')->toDateString())
         <button type="button" class="btn btn-sm schedule-action schedule-action-edit btnEditSchedule"
                 data-url="{{ route('admin.programming.schedules.edit', $schedule) }}?date={{ $serviceDate }}"
                 title="Modificar este día" aria-label="Modificar este día">

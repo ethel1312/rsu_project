@@ -64,6 +64,15 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'birth_date' => 'date',
+            'is_active' => 'boolean',
+            'is_admin' => 'boolean',
+            'permissions' => 'array',
         ];
+    }
+    public function hasPermission(string $permission): bool
+    {
+        return $this->is_active && in_array($permission, \App\Support\UserPermissions::keys(), true)
+            && ($this->is_admin || in_array($permission, $this->permissions ?? [], true));
     }
 }

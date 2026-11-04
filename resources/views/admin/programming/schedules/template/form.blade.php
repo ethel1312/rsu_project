@@ -73,20 +73,22 @@
         @endif
         <div class="col-md-6 mb-3">
             <label for="schedule_driver_id" class="font-weight-bold">Conductor *</label>
-            <select class="form-control schedule-input schedule-select2" name="driver_id" id="schedule_driver_id" required>
+            <select class="form-control schedule-input schedule-select2 mass-crew" name="driver_id" id="schedule_driver_id" required>
                 <option value="">Seleccione un conductor</option>
                 @foreach ($drivers as $driver)
                     <option value="{{ $driver->id }}" @selected(old('driver_id', $schedule?->driver_id) == $driver->id)>{{ $driver->full_name }} · DNI {{ $driver->dni }}</option>
                 @endforeach
             </select>
+            <div class="mass-crew-feedback d-none mt-2"></div>
         </div>
         <div class="col-md-6 mb-3">
             <label for="schedule_helper_ids" class="font-weight-bold">Ayudantes *</label>
-            <select class="form-control schedule-input schedule-select2" name="helper_ids[]" id="schedule_helper_ids" multiple required>
+            <select class="form-control schedule-input schedule-select2 mass-crew" name="helper_ids[]" id="schedule_helper_ids" multiple required>
                 @foreach ($helpers as $helper)
                     <option value="{{ $helper->id }}" @selected(in_array($helper->id, $selectedHelpers))>{{ $helper->full_name }} · DNI {{ $helper->dni }}</option>
                 @endforeach
             </select>
+            <div class="mass-crew-feedback d-none mt-2"></div>
         </div>
         @if ($singleDayDate)
             <div class="col-12 mb-3">

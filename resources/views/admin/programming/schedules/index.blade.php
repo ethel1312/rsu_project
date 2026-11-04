@@ -9,6 +9,9 @@
         <h1 class="rsu-title m-0"><span class="rsu-title-ico"><i class="bi bi-calendar2-week"></i></span> Lista de Programaciones</h1>
         <div class="d-flex flex-wrap" style="gap:8px">
             <button type="button" id="btnScheduleHistoryAll" class="btn btn-outline-info"><i class="bi bi-clock-history"></i> Historial</button>
+            @can('changes.create')
+                <a href="{{ route('admin.programming.changes.index', ['new_mass' => 1]) }}" class="btn btn-outline-warning"><i class="bi bi-arrow-left-right"></i> Cambios masivos</a>
+            @endcan
             <button type="button" id="btnProgramaMasiva" class="btn btn-outline-primary"><i class="bi bi-calendar-range"></i> Programación masiva</button>
             <button type="button" id="btnNuevaPrograma" class="btn rsu-btn-new"><i class="bi bi-plus-circle"></i> Nueva programación</button>
         </div>
@@ -531,9 +534,10 @@ $(function () {
     }
 
     function renderCrewAvailability(availability) {
-        $('.mass-group').each(function () {
+        const individual = $('#frmSchedule [name="mode"]').val() === 'individual';
+        (individual ? $('#frmSchedule') : $('.mass-group')).each(function () {
             const card = $(this);
-            const groupId = String(card.find('.mass-group-id').val() || '');
+            const groupId = String(card.find(individual ? '#schedule_group_id' : '.mass-group-id').val() || '');
             const groupIssues = availability[groupId] || {};
 
             card.find('.mass-crew').each(function () {
@@ -567,7 +571,7 @@ $(function () {
 
     function queueCrewAvailabilityValidation() {
         const form = $('#frmSchedule');
-        if (!form.length || form.find('[name="mode"]').val() !== 'mass') return;
+        if (!form.length || form.find('#dayChangesPayload').length) return;
 
         clearTimeout(crewValidationTimer);
         if (crewValidationRequest) crewValidationRequest.abort();
@@ -576,7 +580,7 @@ $(function () {
 
         const start = $('#schedule_start_date').val();
         const end = $('#schedule_end_date').val();
-        if (!start || !end || start > end || !form.find('input[name="group_ids[]"]:enabled').length) return;
+        if (!start || !end || start > end || !(form.find('[name="mode"]').val() === 'mass' ? form.find('input[name="group_ids[]"]:enabled').length : $('#schedule_group_id').val())) return;
 
         crewValidationTimer = setTimeout(function () {
             crewValidationRequest = $.ajax({
@@ -596,7 +600,7 @@ $(function () {
         }, 350);
     }
 
-    $(document).on('change', '#frmSchedule .mass-crew, #schedule_start_date, #schedule_end_date', queueCrewAvailabilityValidation);
+    $(document).on('change', '#frmSchedule .mass-crew, #schedule_start_date, #schedule_end_date, #frmSchedule [name="days_of_week[]"], #frmSchedule [name="holiday_ids[]"]', queueCrewAvailabilityValidation);
 
     function applyMassShiftFilter() {
         const shift = String($('.mass-shift-filter.active').attr('data-shift') || '');
@@ -648,6 +652,7 @@ $(function () {
                 });
                 if (!holidays.length) container.text('No hay feriados activos en este rango.');
                 $('#holidaysConfigured').val('1');
+                queueCrewAvailabilityValidation();
             }).fail(function () {
                 if (version !== holidayVersion) return;
                 container.text('No se pudieron cargar los feriados. Se omitirán todos los feriados activos al validar.');
@@ -680,6 +685,7 @@ $(function () {
             $('#scheduleSummaryZone').text(data.zone || '—');
             $('#scheduleSummaryShift').text(data.shift_label || data.shift || '—');
             $('#scheduleSummaryVehicle').text(data.vehicle || '—');
+            queueCrewAvailabilityValidation();
         }).fail(function (xhr) {
             summary.addClass('d-none');
             Swal.fire('Error', xhr.responseJSON?.message || 'No se pudo cargar la plantilla del grupo.', 'error');
@@ -793,6 +799,7 @@ $(function () {
                 $('<div class="text-success">').text('Sin inconsistencias en este grupo.').appendTo(content);
             }
         });
+        appendMessageSection(container, 'Sugerencias:', result.suggestions || []);
     }
 
     $(document).on('click', '#btnValidateAvailability', function () {

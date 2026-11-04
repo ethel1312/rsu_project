@@ -19,6 +19,7 @@ class ZoneMapTest extends TestCase
         return ['--path' => [
             'database/migrations/0001_01_01_000000_create_users_table.php',
             'database/migrations/2026_09_19_223236_add_two_factor_columns_to_users_table.php',
+            'database/migrations/2026_11_01_000000_add_user_management_fields.php',
             'database/migrations/2026_10_15_210133_create_zones_table.php',
         ]];
     }
@@ -27,7 +28,7 @@ class ZoneMapTest extends TestCase
     {
         parent::setUp();
 
-        $this->actingAs(User::factory()->create());
+        $this->actingAs(User::factory()->administrator()->create());
     }
 
     private function zone(array $overrides = []): Zone

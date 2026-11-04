@@ -5,7 +5,7 @@
         </x-slot>
 
         <h1 class="text-xl font-semibold mb-2">Marcación de asistencia</h1>
-        <p class="text-sm text-gray-600 mb-4">Ingrese su DNI y contraseña. La fecha, hora y el ingreso o salida se registran automáticamente.</p>
+        <p class="text-sm text-gray-600 mb-4">Ingrese su DNI, contraseña y turno. La fecha, hora y el ingreso o salida se registran automáticamente.</p>
 
         @if (session('status'))
             <div class="mb-4 font-medium text-sm text-green-600" role="status">{{ session('status') }}</div>
@@ -21,6 +21,13 @@
             <div class="mt-4">
                 <x-label for="password" value="Contraseña" />
                 <x-input id="password" class="block mt-1 w-full" type="password" name="password" maxlength="255" required autocomplete="off" />
+            </div>
+            <div class="mt-4">
+                <x-label for="shift_id" value="Turno" />
+                <select id="shift_id" name="shift_id" class="block mt-1 w-full rounded-md border-gray-300" required>
+                    <option value="">Seleccione su turno</option>
+                    @foreach($shifts as $shift)<option value="{{ $shift->id }}" @selected(old('shift_id') == $shift->id)>{{ $shift->name }} ({{ substr($shift->start_time,0,5) }}–{{ substr($shift->end_time,0,5) }})</option>@endforeach
+                </select>
             </div>
             <div class="flex items-center justify-between mt-4">
                 <span class="text-sm text-gray-600">Hora de Lima</span>

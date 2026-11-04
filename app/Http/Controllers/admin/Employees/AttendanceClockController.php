@@ -16,13 +16,14 @@ class AttendanceClockController extends Controller
 {
     public function create()
     {
-        return view('admin.employees.attendances.clock');
+        return view('admin.employees.attendances.clock', ['shifts' => \App\Models\Programming\Shift::orderBy('start_time')->get()]);
     }
 
     public function store(Request $request, AttendanceService $attendances)
     {
         $data = $request->validate([
             'dni' => 'required|digits:8',
+            'shift_id' => 'required|integer|exists:shifts,id',
             'password' => 'required|string|max:255',
         ], [
             'dni.required' => 'El DNI es obligatorio.',
@@ -57,6 +58,7 @@ class AttendanceClockController extends Controller
             $now = now(Attendance::TIMEZONE);
             $attendance = $attendances->save([
                 'employee_id' => $employee->id,
+                'shift_id' => $data['shift_id'],
                 'date' => $now->format('Y-m-d'),
                 'time' => $now->format('H:i:s'),
                 'status' => 'present',
@@ -74,7 +76,7 @@ class AttendanceClockController extends Controller
         $type = $attendance->type === 'entry' ? 'Ingreso' : 'Salida';
 
         return redirect()->route('employees.attendances.clock')->with('status',
-            $type.' registrado exitosamente el '.$attendance->date->format('d/m/Y').' a las '.$attendance->time.' (hora de Lima).'
+            $type.' registrado para el turno '.$attendance->shift->name.' el '.$attendance->date->format('d/m/Y').' a las '.$attendance->time.' (hora de Lima).'
         );
     }
 }

@@ -61,7 +61,7 @@
             <div class="table-responsive">
                 <table class="table table-striped" id="DataTable" style="width:100%">
                     <thead><tr>
-                        <th>DNI</th><th>Nombres</th><th>Apellidos</th><th>Fecha</th><th>Hora</th>
+                        <th>DNI</th><th>Nombres</th><th>Apellidos</th><th>Turno</th><th>Fecha</th><th>Hora</th>
                         <th>Tipo</th><th>Estado</th><th>Notas</th>
                         <th width="40" class="text-center">Edit</th><th width="40" class="text-center">Elim</th>
                     </tr></thead>
@@ -111,11 +111,12 @@ $(document).ready(function () {
             },
             error: function (xhr) { showError(xhr, 'No se pudo cargar el listado de asistencias.'); }
         },
-        order: [[4, 'asc']],
+        order: [[5, 'asc']],
         columns: [
             {data: 'dni', name: 'employees.dni'},
             {data: 'first_name', name: 'employees.first_name'},
             {data: 'last_name', name: 'employees.last_name'},
+            {data: 'shift_name', name: 'shift.name', orderable: false},
             {data: 'date', name: 'attendances.date', searchable: false},
             {data: 'time', name: 'attendances.time', searchable: false},
             {data: 'type', name: 'attendances.type', searchable: false},
@@ -155,7 +156,7 @@ $(document).ready(function () {
     function previewType() {
         if (previewRequest) previewRequest.abort();
         const form = $('#frmAttendance');
-        if (!form.find('[name="employee_id"]').val() || !form.find('[name="date"]').val() || !form.find('[name="time"]').val()) {
+        if (!form.find('[name="shift_id"]').val() || !form.find('[name="employee_id"]').val() || !form.find('[name="date"]').val() || !form.find('[name="time"]').val()) {
             $('#attendance_type').val('Seleccione personal, fecha y hora');
             return;
         }
@@ -164,6 +165,7 @@ $(document).ready(function () {
             url: @json(route('admin.attendances.preview')),
             data: {
                 employee_id: form.find('[name="employee_id"]').val(),
+                shift_id: form.find('[name="shift_id"]').val(),
                 date: form.find('[name="date"]').val(), time: form.find('[name="time"]').val(),
                 status: form.find('[name="status"]').val(), attendance_id: form.find('[name="attendance_id"]').val()
             },

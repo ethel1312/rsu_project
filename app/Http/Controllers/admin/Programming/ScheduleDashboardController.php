@@ -18,22 +18,31 @@ class ScheduleDashboardController extends Controller
 {
     public function index(Request $request, ScheduleChangeService $service)
     {
-        $data = $request->validate(['date' => ['nullable', 'date_format:Y-m-d'], 'shift_id' => ['nullable', 'integer', 'exists:shifts,id']]);
+        $data = $request->validate(['date' => ['nullable', 'date_format:Y-m-d'], 'shift_id' => ['nullable', 'integer', 'exists:shifts,id'], 'filter' => ['nullable', Rule::in(['all', 'complete', 'incomplete', 'missing'])]]);
         $date = $data['date'] ?? now('America/Lima')->toDateString();
         $schedules = ProgrammingSchedule::with('runs')->whereDate('start_date', '<=', $date)->whereDate('end_date', '>=', $date)
             ->when($data['shift_id'] ?? null, fn ($q, $id) => $q->where('shift_id', $id))->get()->filter(fn ($s) => $s->runsOn($date));
         $cards = $schedules->map(function ($schedule) use ($date, $service) {
             $ids = array_merge([$schedule->driver_id], $schedule->helper_ids);
-            $missing = array_values(array_filter($ids, fn ($id) => ! $service->attended((int) $id, $date)));
+            $missing = array_values(array_filter($ids, fn ($id) => ! $service->attended((int) $id, $date, (int) $schedule->shift_id)));
             $run = $schedule->runs->first(fn ($r) => $r->service_date->toDateString() === $date);
 
             return compact('schedule', 'missing', 'run') + ['present' => count($ids) - count($missing)];
         });
+        $total = $cards->count();
+        $filter = $data['filter'] ?? 'all';
+        $missingPersonnel = $cards->flatMap(fn ($card) => collect($card['missing'])->map(fn ($id) => ['id' => $id, 'shift' => $card['schedule']->shift_name, 'group' => $card['schedule']->group_name]))->groupBy('id');
+        $missingEmployees = Employee::whereIn('id', $missingPersonnel->keys())->get()->keyBy('id');
         $complete = $cards->filter(fn ($c) => $c['missing'] === [])->count();
         $missingCount = $cards->flatMap(fn ($c) => $c['missing'])->unique()->count();
         $changes = ScheduleChange::with('actor')->whereDate('service_date', $date)->whereIn('programming_schedule_id', $schedules->modelKeys())->latest('id')->get();
 
-        return view('admin.programming.dashboard.index', compact('cards', 'complete', 'missingCount', 'date', 'changes') + ['shifts' => Shift::orderBy('name')->get()]);
+        $cards = $cards->filter(fn ($card) => match ($filter) {
+            'complete' => $card['missing'] === [],
+            'incomplete', 'missing' => $card['missing'] !== [],
+            default => true,
+        });
+        return view('admin.programming.dashboard.index', compact('cards', 'total', 'filter', 'missingPersonnel', 'missingEmployees', 'complete', 'missingCount', 'date', 'changes') + ['shifts' => Shift::orderBy('name')->get()]);
     }
 
     public function show(Request $request, ProgrammingSchedule $schedule, ScheduleChangeService $service)
@@ -50,17 +59,22 @@ class ScheduleDashboardController extends Controller
                 $editBlockReason = collect($e->errors())->flatten()->first() ?? 'La programación no está disponible para cambios.';
             }
         }
-        $crew = collect(array_merge([$schedule->driver_id], $schedule->helper_ids))->map(fn ($id) => ['employee' => Employee::find($id), 'id' => $id, 'present' => $service->attended((int) $id, $date), 'role' => (int) $id === (int) $schedule->driver_id ? 'driver' : 'helper']);
+        $crew = collect(array_merge([$schedule->driver_id], $schedule->helper_ids))->map(fn ($id) => ['employee' => Employee::find($id), 'id' => $id, 'present' => $service->attended((int) $id, $date, (int) $schedule->shift_id), 'role' => (int) $id === (int) $schedule->driver_id ? 'driver' : 'helper']);
+        $targetShift = $request->validate(['candidate_shift_id' => ['nullable', 'integer', 'exists:shifts,id']])['candidate_shift_id'] ?? $schedule->shift_id;
+        $candidateBase = clone $schedule;
+        if ((int) $targetShift !== (int) $schedule->shift_id) {
+            $candidateBase->fill($service->replacement($schedule, 'shift', $schedule->shift_id, (int) $targetShift));
+        }
         $candidates = [];
         if ($editable) {
             foreach ($crew->where('present', false) as $member) {
                 foreach (Employee::where('status', true)->whereHas('employeeType', fn ($q) => $q->where('name', $member['role'] === 'driver' ? 'Conductor' : 'Ayudante'))->get() as $employee) {
-                    if (! $service->attended($employee->id, $date)) {
+                    if (! $service->attended($employee->id, $date, (int) $targetShift)) {
                         continue;
                     }
                     try {
-                        $candidate = clone $schedule;
-                        $candidate->fill($service->replacement($schedule, $member['role'], $member['id'], $employee->id));
+                        $candidate = clone $candidateBase;
+                        $candidate->fill($service->replacement($candidateBase, $member['role'], $member['id'], $employee->id));
                         $service->validateCandidate($schedule, $candidate, $date, 'dashboard');
                         $candidates[$member['id']][] = $employee;
                     } catch (ValidationException $e) { /* Not available for this specific slot. */
@@ -69,6 +83,9 @@ class ScheduleDashboardController extends Controller
             }
         }
 
+        if ($request->expectsJson()) {
+            return response()->json(['candidates' => collect($candidates)->map(fn ($items) => collect($items)->map(fn ($employee) => ['id' => $employee->id, 'label' => $employee->full_name.' · DNI '.$employee->dni]))]);
+        }
         $data = array_merge(app(ScheduleChangeController::class)->catalog(), compact('schedule', 'date', 'crew', 'editable', 'editBlockReason', 'candidates'));
 
         if ($request->ajax()) {
@@ -142,8 +159,8 @@ class ScheduleDashboardController extends Controller
                 abort(422, 'El recorrido ya fue iniciado.');
             }
             foreach (array_merge([$schedule->driver_id], $schedule->helper_ids) as $id) {
-                if (! $service->attended((int) $id, $date)) {
-                    throw ValidationException::withMessages(['attendance' => 'Todos los integrantes deben registrar asistencia antes de iniciar.']);
+                if (! $service->attended((int) $id, $date, (int) $schedule->shift_id)) {
+                    throw ValidationException::withMessages(['attendance' => 'Todos los integrantes deben registrar asistencia en este día y turno antes de iniciar.']);
                 }
             }
             $schedule->runs()->create(['service_date' => $date, 'started_at' => now(), 'recorded_by' => auth()->id()]);
