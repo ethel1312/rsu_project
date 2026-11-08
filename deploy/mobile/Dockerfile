@@ -18,5 +18,8 @@ RUN mkdir -p bootstrap/cache storage/framework/cache/data storage/framework/sess
     && chown -R www-data:www-data storage bootstrap/cache
 COPY deploy/mobile/index.php /var/www/html/index.php
 COPY deploy/mobile/apache.conf /etc/apache2/sites-available/000-default.conf
+COPY --chmod=755 deploy/mobile/rsu-apache.sh /usr/local/bin/rsu-apache
 ENV APP_ENV=production APP_DEBUG=false LOG_CHANNEL=stderr PORT=8080
-CMD ["sh","-c","sed -i \"s/^Listen 80$/Listen ${PORT}/\" /etc/apache2/ports.conf && exec apache2-foreground"]
+RUN sed -i 's/^Listen 80$/Listen ${PORT}/' /etc/apache2/ports.conf \
+    && rsu-apache apache2ctl -t
+CMD ["rsu-apache", "apache2-foreground"]
