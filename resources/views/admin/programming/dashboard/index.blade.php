@@ -24,12 +24,29 @@
 <div class="col-xl-4 col-md-6"><div class="card operation-card h-100"><div class="card-header {{ count($card['missing']) ? 'bg-danger' : 'bg-success' }} text-white"><i class="bi bi-geo-alt"></i> {{ $schedule->zone_name }}</div><div class="card-body"><div class="row mb-3"><div class="col"><div class="operation-label">Turno</div>{{ $schedule->shift_name }}</div><div class="col"><div class="operation-label">Grupo</div>{{ $schedule->group_name }}</div></div><div class="operation-label">Vehículo</div><p>{{ $schedule->vehicle_label }}</p><span class="badge bg-success">{{ $card['present'] }} presentes</span> <span class="badge bg-danger">{{ count($card['missing']) }} faltantes</span><p class="mt-3 mb-0"><strong>Recorrido:</strong> {{ $card['run']?->finished_at || $schedule->status === 'Finalizada' ? 'Finalizado' : ($card['run']?->started_at ? 'En curso' : 'Sin iniciar') }}</p></div><div class="card-footer d-flex gap-2"><button class="btn btn-primary flex-fill dashboard-detail-button" type="button" data-url="{{ route('admin.programming.dashboard.show', ['schedule'=>$schedule,'date'=>$date]) }}">Ver detalles</button><a class="btn btn-outline-primary" href="{{ route('admin.programming.schedules.route', ['schedule'=>$schedule,'date'=>$date]) }}">{{ $card['run']?->finished_at ? 'Ver recorrido' : 'Recorrido' }}</a></div></div></div>
 @empty<div class="col-12"><div class="alert alert-info">No hay programaciones que coincidan con este filtro, fecha y turno.</div></div>@endforelse</div>
 @endif
+<div id="route-monitor" class="mb-4" data-url="{{ request()->fullUrlWithQuery(['date'=>$date,'monitor'=>1]) }}">
+    @include('admin.programming.dashboard.monitor')
+</div>
+<small id="monitor-error" class="text-danger" role="status"></small>
 <div class="card operation-card"><div class="card-header">Cambios en las programaciones del día <span class="badge bg-primary">{{ $changes->count() }}</span></div><div class="table-responsive"><table class="table mb-0"><thead><tr><th>Programación</th><th>Cambio</th><th>Motivo</th><th>Usuario</th><th>Estado</th><th></th></tr></thead><tbody>@forelse($changes as $change)<tr><td>#{{ $change->programming_schedule_id }}</td><td>{{ \App\Models\Programming\ScheduleChange::TYPES[$change->type] }}</td><td>{{ $change->reason_name }}</td><td>{{ $change->actor?->name }}</td><td>{{ $change->reverted_at ? 'Revertido' : 'Aplicado' }}</td><td><a href="{{ route('admin.programming.changes.show',$change) }}">Ver detalle</a></td></tr>@empty<tr><td colspan="6" class="text-center py-4">No hay cambios registrados para este día.</td></tr>@endforelse</tbody></table></div></div>
 <div class="modal fade" id="dashboardDetailsModal" tabindex="-1" role="dialog" aria-labelledby="dashboardDetailsModalTitle" aria-hidden="true"><div class="modal-dialog modal-xl modal-dialog-scrollable" role="document"><div class="modal-content" id="dashboardDetailsContent"><div class="modal-body text-center py-5"><span class="spinner-border text-primary" role="status"></span><span class="sr-only">Cargando detalle…</span></div></div></div></div>
 @endsection
 
 @section('operation_js')
 <script>
+(async function refreshMonitor() {
+    const panel = document.getElementById('route-monitor');
+    try {
+        if (!document.hidden) {
+            const response = await fetch(panel.dataset.url, {cache:'no-store'});
+            if (!response.ok || response.redirected) throw new Error();
+            panel.innerHTML = await response.text();
+            document.getElementById('monitor-error').textContent = '';
+        }
+    } catch {
+        document.getElementById('monitor-error').textContent = 'No se pudo actualizar el seguimiento. Se muestra la última consulta.';
+    } finally { setTimeout(refreshMonitor, 15000); }
+})();
 $(document).on('click', '.dashboard-detail-button', async function () {
     ++candidateRequestVersion;
     const modal = $('#dashboardDetailsModal');

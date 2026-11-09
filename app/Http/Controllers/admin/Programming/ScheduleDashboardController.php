@@ -20,6 +20,13 @@ class ScheduleDashboardController extends Controller
     {
         $data = $request->validate(['date' => ['nullable', 'date_format:Y-m-d'], 'shift_id' => ['nullable', 'integer', 'exists:shifts,id'], 'filter' => ['nullable', Rule::in(['all', 'complete', 'incomplete', 'missing'])]]);
         $date = $data['date'] ?? now('America/Lima')->toDateString();
+        $monitorRuns = DB::table('schedule_runs as r')->join('programming_schedules as s','s.id','=','r.programming_schedule_id')
+            ->whereDate('r.service_date',$date)->when($data['shift_id'] ?? null, fn ($q,$id) => $q->where('s.shift_id',$id))
+            ->orderByDesc('r.id')->get(['r.id','r.finished_at','r.last_sample_ms','s.zone_name','s.vehicle_label','s.shift_name']);
+        $incidents = DB::table('run_incidents')->whereIn('schedule_run_id',$monitorRuns->pluck('id'))->latest('id')->get()->groupBy('schedule_run_id');
+        if ($request->boolean('monitor')) {
+            return response()->view('admin.programming.dashboard.monitor', compact('monitorRuns','incidents'))->header('Cache-Control','no-store');
+        }
         $schedules = ProgrammingSchedule::with('runs')->whereDate('start_date', '<=', $date)->whereDate('end_date', '>=', $date)
             ->when($data['shift_id'] ?? null, fn ($q, $id) => $q->where('shift_id', $id))->get()->filter(fn ($s) => $s->runsOn($date));
         $cards = $schedules->map(function ($schedule) use ($date, $service) {
@@ -42,7 +49,7 @@ class ScheduleDashboardController extends Controller
             'incomplete', 'missing' => $card['missing'] !== [],
             default => true,
         });
-        return view('admin.programming.dashboard.index', compact('cards', 'total', 'filter', 'missingPersonnel', 'missingEmployees', 'complete', 'missingCount', 'date', 'changes') + ['shifts' => Shift::orderBy('name')->get()]);
+        return view('admin.programming.dashboard.index', compact('monitorRuns', 'incidents', 'cards', 'total', 'filter', 'missingPersonnel', 'missingEmployees', 'complete', 'missingCount', 'date', 'changes') + ['shifts' => Shift::orderBy('name')->get()]);
     }
 
     public function show(Request $request, ProgrammingSchedule $schedule, ScheduleChangeService $service)

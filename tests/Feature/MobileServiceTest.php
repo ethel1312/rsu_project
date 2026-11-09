@@ -43,9 +43,15 @@ class MobileServiceTest extends TestCase
         }
         $this->postJson("$path/start", [], $c)->assertForbidden();
         $this->postJson("$path/start", [], $d)->assertUnprocessable();
-        $mark = ['shift_id' => $g->shift_id, 'request_id' => (string) Str::uuid()];
+        $preview = "$api/attendance/preview?shift_id=$g->shift_id";
+        $this->getJson($preview, $c)->assertForbidden();
+        $this->getJson($preview, $d)->assertOk()->assertJsonPath('type', 'entry')->assertJsonPath('last', null);
+        $mark = ['shift_id' => $g->shift_id, 'request_id' => (string) Str::uuid(), 'expected_type'=>'entry','expected_date'=>'2027-03-01'];
         $this->postJson("$api/attendance", $mark, $d)->assertOk();
         $this->postJson("$api/attendance", $mark, $d)->assertOk();
+        $this->getJson($preview, $d)->assertOk()->assertJsonPath('type', 'exit')->assertJsonPath('last.type', 'entry');
+        $this->travel(2)->seconds();
+        $this->postJson("$api/attendance", array_merge($mark,['request_id'=>(string)Str::uuid()]), $d)->assertConflict();
         $this->assertDatabaseCount('attendances', 1);
         foreach ($g->helpers as $helper) {
             Attendance::create(['employee_id' => $helper->id, 'shift_id' => $g->shift_id, 'date' => '2027-03-01', 'time' => '08:00', 'type' => 'entry', 'status' => 'present']);
@@ -57,10 +63,22 @@ class MobileServiceTest extends TestCase
         $this->postJson("$path/points", $samples, $d)->assertOk();
         $this->postJson("$path/points", $samples, $d)->assertOk();
         $this->getJson($path, $c)->assertOk()->assertJsonPath('state', 'En curso')->assertJsonCount(2, 'points')->assertJsonCount(0, 'crew');
+        $report=['request_id'=>(string)Str::uuid(),'category'=>'Avería','note'=>'Motor detenido'];
+        $this->postJson("$path/incident",$report,$c)->assertForbidden();
+        $this->postJson("$path/incident",$report,$d)->assertOk();
+        $this->postJson("$path/incident",$report,$d)->assertOk();
+        $this->assertDatabaseCount('run_incidents',1);
+        $this->assertDatabaseHas('run_incidents',['longitude'=>-79.85,'location_ms'=>200,'note'=>'Motor detenido']);
+        $this->getJson($path,$d)->assertOk()->assertJsonPath('incidents.0.category','Avería');
+        $this->getJson($path,$c)->assertOk()->assertJsonCount(0,'incidents')->assertJsonPath('last_sample_ms',200);
+        $admin=\App\Models\User::factory()->administrator()->create();
+        $this->actingAs($admin)->get(route('admin.programming.dashboard.index',['date'=>'2027-03-01','monitor'=>1]))
+            ->assertOk()->assertSee('Motor detenido')->assertSee($g->zone->name)->assertSee('Sin señal reciente');
         $this->postJson("$path/rate", ['stars' => 4], $c)->assertNotFound();
         $this->postJson("$path/finish", [], $d)->assertUnprocessable();
         $this->postJson("$path/finish", ['observation' => 'Sin incidencias'], $d)->assertOk();
         $this->postJson("$path/points", $samples, $d)->assertConflict();
+        $this->postJson("$path/incident",array_merge($report,['request_id'=>(string)Str::uuid()]),$d)->assertConflict();
         $this->postJson("$path/rate", ['stars' => 4, 'comment' => 'Buen servicio'], $c)->assertOk();
         $this->postJson("$path/rate", ['stars' => 5], $c)->assertOk();
         $this->getJson($path, $c)->assertOk()->assertJsonPath('rating.stars', 5)->assertJsonPath('votes', 1)->assertJsonPath('observation', 'Sin incidencias');

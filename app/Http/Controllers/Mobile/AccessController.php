@@ -20,7 +20,7 @@ class AccessController
             $driver = $data['role'] === 'driver';
             $person = $driver
                 ? Employee::where('email', $data['email'])->where('status', true)->whereHas('employeeType', fn ($q) => $q->where('name', 'Conductor'))->lockForUpdate()->first()
-                : DB::table('citizens')->where('email', $data['email'])->first();
+                : DB::table('citizens')->where('email', $data['email'])->lockForUpdate()->first();
             $stored = (string) ($person->password ?? '');
             $legacy = $driver && $stored !== '' && password_get_info($stored)['algoName'] === 'unknown';
             $ok = $legacy ? hash_equals($stored, $data['password']) : password_verify($data['password'], $stored);
@@ -31,7 +31,8 @@ class AccessController
             $token = Str::random(64);
             DB::table('mobile_sessions')->insert(['token_hash' => hash('sha256', $token), $driver ? 'employee_id' : 'citizen_id' => $person->id, 'expires_at' => now()->addDays(7)]);
 
-            return ['token' => $token, 'role' => $data['role'], 'name' => trim($person->first_name.' '.$person->last_name), 'dni' => $person->dni];
+            return ['token' => $token, 'role' => $data['role'], 'name' => trim($person->first_name.' '.$person->last_name), 'dni' => $person->dni,
+                'zone_id' => $driver ? null : $person->zone_id];
         });
     }
 

@@ -55,10 +55,26 @@ class ServiceController
         return ['items' => Shift::orderBy('start_time')->get(['id', 'name', 'start_time', 'end_time'])];
     }
 
+    public function attendancePreview(Request $r, AttendanceService $service)
+    {
+        $driver = $this->driver($r);
+        $data = $r->validate(['shift_id' => 'required|integer|exists:shifts,id']);
+        $now = now(Attendance::TIMEZONE);
+        $last = Attendance::where('employee_id', $driver->id)->where('shift_id', $data['shift_id'])
+            ->whereDate('date', $now->toDateString())->where('time', '<=', $now->toTimeString())
+            ->where('status', 'present')->orderByDesc('time')->first(['time', 'type']);
+        // Include marks made in the current second for the next available timestamp.
+        $type = $last?->time === $now->toTimeString()
+            ? ($last->type === 'entry' ? 'exit' : 'entry')
+            : $service->nextType($driver->id, $now->toDateString(), $now->toTimeString(), $data['shift_id']);
+        return ['shift_id' => (int) $data['shift_id'], 'date' => $now->toDateString(), 'type' => $type, 'last' => $last];
+    }
+
     public function mark(Request $r, AttendanceService $service)
     {
         $driver = $this->driver($r);
-        $data = $r->validate(['shift_id' => 'required|exists:shifts,id', 'request_id' => 'required|uuid']);
+        $data = $r->validate(['shift_id' => 'required|exists:shifts,id', 'request_id' => 'required|uuid',
+            'expected_type' => 'sometimes|required|in:entry,exit', 'expected_date' => 'required_with:expected_type|date_format:Y-m-d']);
         $mark = DB::transaction(function () use ($driver, $service, $data) {
             Employee::whereKey($driver->id)->lockForUpdate()->firstOrFail();
             $previous = Attendance::where('employee_id', $driver->id)->where('mobile_mark_key', $data['request_id'])->first();
@@ -68,6 +84,10 @@ class ServiceController
             $now = now(Attendance::TIMEZONE);
             $mark = $service->save(['employee_id' => $driver->id, 'shift_id' => $data['shift_id'], 'date' => $now->toDateString(),
                 'time' => $now->toTimeString(), 'status' => 'present', 'notes' => null]);
+            if (isset($data['expected_type'])) {
+                abort_if($data['expected_type'] !== $mark->type || $data['expected_date'] !== $now->toDateString(),
+                    409, 'La marcación cambió. Revisa la vista previa y confirma nuevamente.');
+            }
             $mark->forceFill(['mobile_mark_key' => $data['request_id']])->save();
 
             return $mark;
@@ -137,6 +157,8 @@ class ServiceController
 
         return $this->summary($s, $date, $run) + ['driver' => $s->driver_name, 'helpers' => $s->helper_names, 'crew' => $crew, 'today' => $this->today(),
             'can_start' => $isDriver && $date === $this->today() && in_array($s->status, ['Programada', 'Reprogramado'], true) && ! $run && ! in_array(false, array_column($crew, 'present'), true),
+            'last_sample_ms' => $run?->last_sample_ms ? (int) $run->last_sample_ms : null,
+            'incidents' => $isDriver && $run ? DB::table('run_incidents')->where('schedule_run_id',$run->id)->latest('id')->get(['category','note']) : [],
             'polygon' => Zone::find($s->zone_id)?->coordinates ?? [], 'points' => $run?->route_points ?? [],
             'started_at' => $run?->started_at?->toIso8601String(), 'finished_at' => $run?->finished_at?->toIso8601String(),
             'observation' => $run?->observation, 'rating' => $rating];
@@ -185,6 +207,27 @@ class ServiceController
             $run->update(['route_points' => $points, 'last_sample_ms' => $last]);
 
             return ['received_through' => $last];
+        }, 3);
+    }
+
+    public function incident(Request $r, int $schedule, string $date)
+    {
+        $this->driver($r);
+        $data = $r->validate(['category' => 'required|in:Vía bloqueada,Avería,Otro',
+            'note' => 'required|string|max:500', 'request_id' => 'required|uuid']);
+        return DB::transaction(function () use ($r, $schedule, $date, $data) {
+            $s = $this->occurrence($r, $schedule, $date, true);
+            $run = $s->runs()->whereDate('service_date', $date)->lockForUpdate()->firstOrFail();
+            $incidents = DB::table('run_incidents')->where('schedule_run_id', $run->id);
+            if (!$incidents->where('request_id', $data['request_id'])->exists()) {
+                abort_unless($run->started_at && !$run->finished_at, 409, 'El recorrido debe estar en curso.');
+                $points = $run->route_points ?? [];
+                $point = $run->last_sample_ms && $points ? end($points) : null;
+                DB::table('run_incidents')->insert($data + ['schedule_run_id' => $run->id,
+                    'latitude' => $point[0] ?? null, 'longitude' => $point[1] ?? null, 'location_ms' => $run->last_sample_ms,
+                    'created_at' => now(), 'updated_at' => now()]);
+            }
+            return ['message' => 'Incidencia enviada al panel.'];
         }, 3);
     }
 
