@@ -78,10 +78,17 @@ class ServiceController
 
     public function index(Request $r)
     {
-        $data = $r->validate(['month' => 'sometimes|date_format:Y-m', 'history' => 'sometimes|boolean']);
-        $first = CarbonImmutable::parse(($data['month'] ?? substr($this->today(), 0, 7)).'-01');
-        $last = $first->endOfMonth();
-        $schedules = $this->scope($r)->with(['runs' => fn ($q) => $q->whereBetween('service_date', [$first->toDateString(), $last->toDateString()])])
+        $data = $r->validate(['month' => 'sometimes|date_format:Y-m', 'date' => 'sometimes|date_format:Y-m-d', 'history' => 'sometimes|boolean']);
+        $today = $this->today();
+        $first = $last = CarbonImmutable::parse($today, Attendance::TIMEZONE);
+        if ($r->boolean('history') && isset($data['date'])) {
+            $first = $last = CarbonImmutable::parse($data['date'], Attendance::TIMEZONE);
+        } elseif ($r->boolean('history')) {
+            $first = CarbonImmutable::parse(($data['month'] ?? substr($today, 0, 7)).'-01', Attendance::TIMEZONE);
+            $last = $first->endOfMonth();
+        }
+        $schedules = $this->scope($r)->with(['runs' => fn ($q) => $q->whereDate('service_date', '>=', $first->toDateString())
+            ->whereDate('service_date', '<=', $last->toDateString())])
             ->whereDate('start_date', '<=', $last)->whereDate('end_date', '>=', $first)->get();
         $items = [];
         foreach ($schedules as $schedule) {
@@ -100,7 +107,7 @@ class ServiceController
         }
         $items = collect($items)->sortBy([['date', $r->boolean('history') ? 'desc' : 'asc'], ['start', 'asc']])->values();
 
-        return ['items' => $items, 'today' => $this->today()];
+        return ['items' => $items, 'today' => $today];
     }
 
     private function summary($s, string $date, ?ScheduleRun $run): array

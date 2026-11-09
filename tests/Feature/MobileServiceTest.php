@@ -37,7 +37,10 @@ class MobileServiceTest extends TestCase
         $this->postJson("$api/register", $citizen + ['dni' => '91000000', 'first_name' => 'Ana', 'last_name' => 'Pérez', 'zone_id' => $g->zone_id])->assertCreated();
         $d = ['Authorization' => 'Bearer '.$this->postJson("$api/login", $driver)->assertOk()->json('token')];
         $c = ['Authorization' => 'Bearer '.$this->postJson("$api/login", $citizen)->assertOk()->json('token')];
-        $this->getJson("$api/schedules?month=2027-03", $c)->assertOk()->assertJsonCount(3, 'items');
+        foreach ([$c, $d] as $headers) {
+            $this->getJson("$api/schedules?month=2027-03", $headers)->assertOk()
+                ->assertJsonCount(1, 'items')->assertJsonPath('items.0.date', '2027-03-01');
+        }
         $this->postJson("$path/start", [], $c)->assertForbidden();
         $this->postJson("$path/start", [], $d)->assertUnprocessable();
         $mark = ['shift_id' => $g->shift_id, 'request_id' => (string) Str::uuid()];
@@ -62,6 +65,11 @@ class MobileServiceTest extends TestCase
         $this->postJson("$path/rate", ['stars' => 5], $c)->assertOk();
         $this->getJson($path, $c)->assertOk()->assertJsonPath('rating.stars', 5)->assertJsonPath('votes', 1)->assertJsonPath('observation', 'Sin incidencias');
         $this->getJson("$api/schedules?month=2027-03&history=1", $d)->assertOk()->assertJsonCount(1, 'items');
+        foreach ([$c, $d] as $headers) {
+            $this->getJson("$api/schedules?history=1&date=2027-03-01", $headers)->assertOk()
+                ->assertJsonCount(1, 'items')->assertJsonPath('items.0.date', '2027-03-01');
+            $this->getJson("$api/schedules?history=1&date=2027-03-08", $headers)->assertOk()->assertJsonCount(0, 'items');
+        }
         $this->postJson("$api/logout", [], $d)->assertOk();
         $this->getJson($path,$d)->assertUnauthorized();
         $schedule->update(['zone_id' => 9999]);
