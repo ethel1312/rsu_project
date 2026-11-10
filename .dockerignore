@@ -1,0 +1,7 @@
+.git
+.github
+.env
+docker-compose.yml
+node_modules
+storage/logs
+tests

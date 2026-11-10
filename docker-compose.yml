@@ -1,0 +1,52 @@
+services:
+  app:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ethel1312/rsu-project:1.0
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      APP_URL: http://localhost:8080
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: rsu_db
+      DB_USERNAME: rsu_user
+      DB_PASSWORD: rsu_password_local
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  mysql:
+    platform: linux/amd64
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rsu_root_local
+      MYSQL_DATABASE: rsu_db
+      MYSQL_USER: rsu_user
+      MYSQL_PASSWORD: rsu_password_local
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-prsu_root_local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  phpmyadmin:
+    image: phpmyadmin:5.2-apache
+    ports:
+      - "8081:80"
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+volumes:
+  mysql_data:
