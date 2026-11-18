@@ -827,6 +827,12 @@ return [
                     'route' => 'admin.vehicles.index',
                     'icon' => 'bi bi-truck',
                 ],
+                [
+                    'text' => 'Mantenimiento',
+                    'route' => 'admin.maintenances.index',
+                    'active' => ['admin/maintenances*', 'admin/maintenance-schedules*'],
+                    'icon' => 'bi bi-tools',
+                ],
             ],
         ],
         [

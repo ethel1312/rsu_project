@@ -19,6 +19,16 @@ use App\Http\Controllers\admin\Programming\PersonnelGroupController;
 
 use Illuminate\Support\Facades\Route;
 
+Route::middleware('auth')->group(function () {
+    Route::resource('maintenances', \App\Http\Controllers\admin\MaintenanceController::class)
+        ->except(['show'])->names('admin.maintenances');
+    Route::resource('maintenances.schedules', \App\Http\Controllers\admin\MaintenanceScheduleController::class)
+        ->except(['show'])->names('admin.maintenances.schedules');
+    Route::resource('maintenance-schedules.days', \App\Http\Controllers\admin\MaintenanceDayController::class)
+        ->parameters(['maintenance-schedules' => 'schedule'])->only(['index', 'edit', 'update'])
+        ->names('admin.maintenance-days');
+});
+
 Route::get('/', [AdminController::class, 'index']);
 
 Route::resource('brands', BrandController::class)->names('admin.brands');
