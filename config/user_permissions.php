@@ -6,7 +6,7 @@ return [
         'colors' => ['label' => 'Colores'], 'brands' => ['label' => 'Marcas'],
         'models' => ['label' => 'Modelos'], 'vehicle_types' => ['label' => 'Tipos de vehículos'],
         'vehicles' => ['label' => 'Vehículos', 'extra' => ['manage-images' => 'Gestionar imágenes']],
-        'maintenances' => ['label' => 'Mantenimientos', 'available' => false],
+        'maintenances' => ['label' => 'Mantenimientos'],
     ],
     'Gestión de Personal' => [
         'employee_types' => ['label' => 'Tipos de personal'], 'employees' => ['label' => 'Personal'],

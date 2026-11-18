@@ -9,6 +9,7 @@ use App\Http\Controllers\admin\Employees\ContractController;
 use App\Http\Controllers\admin\Employees\EmployeeController;
 use App\Http\Controllers\admin\Employees\EmployeeTypeController;
 use App\Http\Controllers\admin\Employees\VacationController;
+use App\Http\Controllers\admin\MaintenanceController;
 use App\Http\Controllers\admin\Programming\ChangeReasonController;
 use App\Http\Controllers\admin\Programming\HolidayController;
 use App\Http\Controllers\admin\Programming\PersonnelGroupController;
@@ -36,6 +37,25 @@ Route::resource('colors', ColorController::class)->names('admin.colors');
 Route::resource('vehicle_types', VehicleTypeController::class)->names('admin.vehicle_types');
 
 Route::resource('vehicles', VehicleController::class)->names('admin.vehicles');
+
+Route::resource('maintenances', MaintenanceController::class)->except(['show'])->names('admin.maintenances');
+
+Route::prefix('maintenances/{maintenance}/schedules')->name('admin.maintenances.schedules.')
+    ->scopeBindings()->controller(MaintenanceController::class)->group(function () {
+        Route::get('/', 'schedules')->name('index');
+        Route::get('/create', 'createSchedule')->name('create');
+        Route::post('/', 'storeSchedule')->name('store');
+        Route::get('/{schedule}/edit', 'editSchedule')->name('edit');
+        Route::put('/{schedule}', 'updateSchedule')->name('update');
+        Route::delete('/{schedule}', 'destroySchedule')->name('destroy');
+
+        Route::prefix('{schedule}/days')->name('days.')->group(function () {
+            Route::get('/', 'days')->name('index');
+            Route::get('/{day}/edit', 'editDay')->name('edit');
+            Route::put('/{day}', 'updateDay')->name('update');
+            Route::get('/{day}/image', 'image')->name('image');
+        });
+    });
 
 Route::get('vehicles/models/{brandId}', [VehicleController::class, 'getModelsByBrand'])
     ->name('admin.vehicles.models');

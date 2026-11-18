@@ -35,6 +35,12 @@ class UserPermissions
     {
         $name = preg_replace('/^admin\.(programming\.)?/', '', $name);
         [$module, $action] = array_pad(explode('.', $name, 2), 2, '');
+        if ($module === 'maintenances') {
+            $action = preg_replace('/^schedules\.(days\.)?/', '', $action);
+            if ($action === 'image') {
+                return ['maintenances.view'];
+            }
+        }
         if ($module === 'users' && str_starts_with($action, 'permissions')) return ['users.manage'];
         if ($module === 'vehicles' && str_starts_with($action, 'images')) return ['vehicles.manage-images'];
         if ($module === 'zones' && in_array($action, ['map', 'map-data'])) return ['zones.map-view'];
