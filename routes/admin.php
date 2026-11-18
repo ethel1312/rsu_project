@@ -19,6 +19,7 @@ use App\Http\Controllers\admin\Programming\ShiftController;
 use App\Http\Controllers\admin\Programming\ZoneController;
 use App\Http\Controllers\admin\VehicleController;
 use App\Http\Controllers\admin\VehicleTypeController;
+use App\Http\Controllers\admin\MaintenanceController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [AdminController::class, 'index'])->name('admin.home');
@@ -36,6 +37,22 @@ Route::resource('colors', ColorController::class)->names('admin.colors');
 Route::resource('vehicle_types', VehicleTypeController::class)->names('admin.vehicle_types');
 
 Route::resource('vehicles', VehicleController::class)->names('admin.vehicles');
+
+Route::get('maintenances', [MaintenanceController::class, 'index'])->name('admin.maintenances.index');
+Route::get('maintenances/create', [MaintenanceController::class, 'create'])->name('admin.maintenances.create');
+Route::post('maintenances', [MaintenanceController::class, 'store'])->name('admin.maintenances.store');
+Route::get('maintenances/{maintenance}/edit', [MaintenanceController::class, 'edit'])->name('admin.maintenances.edit');
+Route::put('maintenances/{maintenance}', [MaintenanceController::class, 'update'])->name('admin.maintenances.update');
+Route::delete('maintenances/{maintenance}', [MaintenanceController::class, 'destroy'])->name('admin.maintenances.destroy');
+Route::get('maintenances/{maintenance}/schedules', [MaintenanceController::class, 'schedules'])->name('admin.maintenances.schedules');
+Route::get('maintenances/{maintenance}/schedules/create', [MaintenanceController::class, 'createSchedule'])->name('admin.maintenances.schedules.create');
+Route::post('maintenances/{maintenance}/schedules', [MaintenanceController::class, 'storeSchedule'])->name('admin.maintenances.schedules.store');
+Route::get('maintenance-schedules/{schedule}/edit', [MaintenanceController::class, 'editSchedule'])->name('admin.maintenances.schedules.edit');
+Route::put('maintenance-schedules/{schedule}', [MaintenanceController::class, 'updateSchedule'])->name('admin.maintenances.schedules.update');
+Route::delete('maintenance-schedules/{schedule}', [MaintenanceController::class, 'destroySchedule'])->name('admin.maintenances.schedules.destroy');
+Route::get('maintenance-schedules/{schedule}/days', [MaintenanceController::class, 'days'])->name('admin.maintenances.days');
+Route::get('maintenance-days/{day}/edit', [MaintenanceController::class, 'editDay'])->name('admin.maintenances.days.edit');
+Route::put('maintenance-days/{day}', [MaintenanceController::class, 'updateDay'])->name('admin.maintenances.days.update');
 
 Route::get('vehicles/models/{brandId}', [VehicleController::class, 'getModelsByBrand'])
     ->name('admin.vehicles.models');

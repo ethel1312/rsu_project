@@ -37,6 +37,17 @@ class UserPermissions
         [$module, $action] = array_pad(explode('.', $name, 2), 2, '');
         if ($module === 'users' && str_starts_with($action, 'permissions')) return ['users.manage'];
         if ($module === 'vehicles' && str_starts_with($action, 'images')) return ['vehicles.manage-images'];
+        if ($module === 'maintenances') {
+            $operation = str_contains($action, '.') ? substr($action, strrpos($action, '.') + 1) : $action;
+            $ability = match ($operation) {
+                'index', 'schedules', 'days' => 'view',
+                'create', 'store' => 'create',
+                'edit', 'update' => 'edit',
+                'destroy' => 'delete',
+                default => null,
+            };
+            if ($ability) return ['maintenances.'.$ability];
+        }
         if ($module === 'zones' && in_array($action, ['map', 'map-data'])) return ['zones.map-view'];
         if ($module === 'schedules' && in_array($action, ['start', 'finish', 'route'])) {
             return $action === 'route' ? ['dashboard.view', 'schedules.view'] : ['dashboard.edit'];

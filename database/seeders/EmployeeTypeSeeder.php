@@ -24,5 +24,13 @@ class EmployeeTypeSeeder extends Seeder
                 'is_default' => true
             ]
         );
+
+        EmployeeType::updateOrCreate(
+            ['name' => 'Mantenimiento'],
+            [
+                'description' => 'Personal asignado a los mantenimientos programados de vehículos.',
+                'is_default' => true
+            ]
+        );
     }
 }
